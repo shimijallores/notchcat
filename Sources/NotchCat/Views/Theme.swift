@@ -65,19 +65,27 @@ extension View {
     func card(_ color: Color) -> some View { modifier(CardBackground(color: color)) }
 }
 
-/// The cat mascot (brand/zi-mascot.png, bundled as mascot.png).
-struct MascotView: View {
-    var size: CGFloat
-
-    private static let image: NSImage? = {
+/// The cat mascot. Bundled as a SwiftPM resource (works from Xcode) and also found in the
+/// hand-assembled .app bundle (`build-app.sh` copies it into Resources as mascot.png).
+enum Mascot {
+    static let image: NSImage? = {
+        if let url = Bundle.module.url(forResource: "mascot", withExtension: "png"),
+           let image = NSImage(contentsOf: url) {
+            return image
+        }
         if let url = Bundle.main.url(forResource: "mascot", withExtension: "png") {
             return NSImage(contentsOf: url)
         }
         return nil
     }()
+}
+
+/// The cat mascot (brand/zi-mascot.png, bundled as mascot.png).
+struct MascotView: View {
+    var size: CGFloat
 
     var body: some View {
-        if let image = Self.image {
+        if let image = Mascot.image {
             Image(nsImage: image).resizable().interpolation(.high).scaledToFit()
                 .frame(width: size, height: size)
         } else {

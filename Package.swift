@@ -7,7 +7,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "NotchCat",
-            path: "Sources/NotchCat"
+            path: "Sources/NotchCat",
+            resources: [
+                .copy("Resources/mascot.png")
+            ]
         )
     ],
     swiftLanguageVersions: [.v5]

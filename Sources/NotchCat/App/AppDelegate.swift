@@ -50,10 +50,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = item.button {
-            if let url = Bundle.main.url(forResource: "mascot", withExtension: "png"),
-               let image = NSImage(contentsOf: url) {
-                image.size = NSSize(width: 18, height: 18)
-                button.image = image
+            if let image = Mascot.image {
+                let scaled = NSImage(size: NSSize(width: 18, height: 18))
+                scaled.lockFocus()
+                image.draw(in: NSRect(x: 0, y: 0, width: 18, height: 18))
+                scaled.unlockFocus()
+                scaled.isTemplate = false
+                button.image = scaled
             } else {
                 button.image = NSImage(systemSymbolName: "cat.fill", accessibilityDescription: "NotchCat")
             }
