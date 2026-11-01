@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Carbon.HIToolbox
 
 @MainActor
@@ -6,14 +7,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controller: NotchController!
     private var hotKey: HotKey?
     private var statusItem: NSStatusItem?
+    private var cancellables = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // v1 kept data in state.json; bring it into SQLite before anything reads the database.
+        if let minutes = LegacyImporter.importIfNeeded(into: .shared) {
+            AppSettings.shared.data.defaultFocusMinutes = minutes
+        }
+        if CommandLine.arguments.contains("--seed-demo") { DemoData.seed(into: .shared) }
+        if CommandLine.arguments.contains("--selftest-note") { SelfTest.noteConversion(); exit(0) }
+        if CommandLine.arguments.contains("--selftest-settings") { SelfTest.settings(); exit(0) }
+        let timer = FocusTimer.shared
+        let sessions = SessionRepository(db: .shared)
+        timer.sessionLogger = { sessions.insert($0) }
+
         controller = NotchController()
 
-        // Option-N toggles the panel from anywhere.
-        hotKey = HotKey(keyCode: kVK_ANSI_N, modifiers: optionKey) { [weak self] in
-            DispatchQueue.main.async { self?.controller.toggle() }
-        }
+        // Option-N toggles the panel from anywhere (can be switched off in Settings).
+        AppSettings.shared.$data.map(\.hotkeyEnabled).removeDuplicates()
+            .sink { [weak self] enabled in
+                self?.hotKey = enabled
+                    ? HotKey(keyCode: kVK_ANSI_N, modifiers: optionKey) { [weak self] in
+                        DispatchQueue.main.async { self?.controller.toggle() }
+                    }
+                    : nil
+            }
+            .store(in: &cancellables)
 
         installStatusItem()
 
@@ -32,6 +51,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             FocusTimer.shared.start(minutes: 25)
             controller.writeSnapshots(to: URL(fileURLWithPath: args[i + 1])) { NSApp.terminate(nil) }
         }
+        if let i = args.firstIndex(of: "--tab"), i + 1 < args.count,
+           let tab = PanelTab.allCases.first(where: { $0.rawValue.lowercased() == args[i + 1] }) {
+            controller.ui.tab = tab
+        }
+        // Test-only: add a reminder N seconds out. Refuses to touch the real database.
+        if let i = args.firstIndex(of: "--remind-in"), i + 1 < args.count, let n = Double(args[i + 1]),
+           ProcessInfo.processInfo.environment["NOTCHCAT_DB"] != nil {
+            let store = TaskStore.shared
+            store.add(title: "Call mom", on: store.today)
+            if let id = store.tasks.last?.id { store.setReminder(id, at: Date().addingTimeInterval(n)) }
+        }
+        if let i = args.firstIndex(of: "--tab-after"), i + 2 < args.count, let delay = Double(args[i + 1]),
+           let tab = PanelTab.allCases.first(where: { $0.rawValue.lowercased() == args[i + 2] }) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { self.controller.ui.tab = tab }
+        }
         if args.contains("--log-frames") { controller.logFrames() }
         if args.contains("--open-hover") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { self.controller.show(pinned: false) }
@@ -42,7 +76,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        TaskStore.shared.save()
+        FocusTimer.shared.flushForQuit()
+        NoteStore.shared.flush()
     }
 
     // MARK: - Status item

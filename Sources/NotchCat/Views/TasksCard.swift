@@ -4,6 +4,7 @@ struct TasksCard: View {
     @ObservedObject var ui: PanelUIState
     @ObservedObject var store: TaskStore
     @ObservedObject var timer: FocusTimer
+    @ObservedObject private var settings = AppSettings.shared
 
     @State private var day: TaskDay = .today
     @State private var draft = ""
@@ -146,6 +147,20 @@ struct TasksCard: View {
                 }
                 Button { beginRename(task) } label: { Label("Rename…", systemImage: "pencil") }
                 Button { ui.modal = .taskLimit(task.id) } label: { Label("Set Time Limit…", systemImage: "clock") }
+                if settings.data.remindersEnabled {
+                    Menu {
+                        ForEach(ReminderPreset.allCases, id: \.self) { preset in
+                            if let when = preset.date() {
+                                Button(preset.title) { store.setReminder(task.id, at: when) }
+                            }
+                        }
+                        Button("Custom…") { ui.modal = .customReminder(task.id) }
+                        if task.remindAt != nil {
+                            Divider()
+                            Button("Clear Reminder") { store.setReminder(task.id, at: nil) }
+                        }
+                    } label: { Label("Remind Me", systemImage: "bell") }
+                }
                 Divider()
                 if day == .today {
                     Button { store.move(task.id, to: .tomorrow) } label: { Label("Move to Tomorrow", systemImage: "arrow.right.circle") }
@@ -174,10 +189,14 @@ struct TasksCard: View {
     @ViewBuilder
     private func badges(_ task: TaskItem) -> some View {
         let linked = timer.linkedTaskID == task.id && timer.state != .idle
-        if task.timeLimitMinutes != nil || linked {
+        if task.timeLimitMinutes != nil || task.remindAt != nil || linked {
             HStack(spacing: 5) {
                 if let m = task.timeLimitMinutes {
                     Badge(icon: "clock", text: "\(m)m")
+                }
+                if let at = task.remindAt {
+                    Badge(icon: task.reminded ? "bell.slash" : "bell", text: at.reminderLabel)
+                        .opacity(task.reminded ? 0.55 : 1)
                 }
                 if linked {
                     ActiveBadge(state: timer.state)
@@ -201,7 +220,7 @@ struct TasksCard: View {
     // MARK: Actions
 
     private func focus(_ task: TaskItem) {
-        timer.start(minutes: task.timeLimitMinutes ?? store.defaultFocusMinutes, taskID: task.id)
+        timer.start(minutes: task.timeLimitMinutes ?? AppSettings.shared.data.defaultFocusMinutes, taskID: task.id)
     }
 
     private func beginRename(_ task: TaskItem) {

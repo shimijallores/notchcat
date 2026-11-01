@@ -46,18 +46,23 @@ struct NotchGeometry {
                width: notchRect.width + 12, height: notchRect.height + 40)
     }
 
+    /// Widest the tray may get on this screen.
+    var maxPanelWidth: CGFloat { min(screen.frame.width * 0.74, 1120) }
+
     /// Frame of the expanded panel: flush with the top of the screen, centered on the notch.
-    var panelFrame: NSRect {
+    func panelFrame(width requested: CGFloat) -> NSRect {
         let frame = screen.frame
-        let width = min(max(frame.width * 0.52, 720), 860)
+        let width = min(max(requested, 780), maxPanelWidth)
         let height = min(max(frame.height * 0.36, 320), 400)
         return alignedFrame(width: width, height: height)
     }
 
+    var panelFrame: NSRect { panelFrame(width: 780) }
+
     /// Compact "Dynamic Island" frame: just wider than the notch, a slim row below it.
     var islandFrame: NSRect {
         let frame = screen.frame
-        let width = max(notchRect.width + 170, 380)
+        let width = max(notchRect.width + 230, 440)
         let height = menuBarHeight + 62
         return alignedFrame(width: width, height: height)
     }

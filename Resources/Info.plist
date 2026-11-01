@@ -28,5 +28,9 @@
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>NotchCat shows today's events in its Events card. It only reads events and never creates, edits or deletes them.</string>
+    <key>NSCalendarsUsageDescription</key>
+    <string>NotchCat shows today's events in its Events card. It only reads events and never creates, edits or deletes them.</string>
 </dict>
 </plist>

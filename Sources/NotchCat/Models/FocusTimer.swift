@@ -5,7 +5,7 @@ import Combine
 /// The pomodoro / focus countdown. Single source of truth for the card and the notch pill.
 @MainActor
 final class FocusTimer: ObservableObject {
-    static let shared = FocusTimer(defaultMinutes: TaskStore.shared.defaultFocusMinutes)
+    static let shared = FocusTimer(defaultMinutes: AppSettings.shared.data.defaultFocusMinutes)
 
     enum State: Equatable {
         case idle        // ready, nothing started
@@ -27,6 +27,12 @@ final class FocusTimer: ObservableObject {
     private var ticker: Timer?
     private var pausedBySleep = false
 
+    /// Called when a session ends (finished or abandoned) so Insights can count it.
+    var sessionLogger: ((FocusSession) -> Void)?
+    private var sessionStartedAt: Date?
+    private var activeAccumulated: TimeInterval = 0
+    private var lastResumeAt: Date?
+
     init(defaultMinutes: Int = 25) {
         let secs = defaultMinutes * 60
         remaining = secs
@@ -45,6 +51,8 @@ final class FocusTimer: ObservableObject {
 
     /// Starts a fresh session. Pass `minutes` to override the prepared duration.
     func start(minutes: Int? = nil, taskID: UUID? = nil) {
+        // Starting over a live session (e.g. Focus on another task) closes the old one first.
+        if state == .running || state == .paused { endTracking(completed: false) }
         if let minutes {
             sessionTotal = max(1, minutes) * 60
             remaining = sessionTotal
@@ -55,6 +63,7 @@ final class FocusTimer: ObservableObject {
         pausedRemaining = TimeInterval(remaining)
         endDate = Date().addingTimeInterval(pausedRemaining)
         state = .running
+        beginTracking()
         startTicker()
     }
 
@@ -79,6 +88,7 @@ final class FocusTimer: ObservableObject {
         guard state == .running, let endDate else { return }
         pausedRemaining = max(0, endDate.timeIntervalSinceNow)
         self.endDate = nil
+        accumulateActive()
         state = .paused
         stopTicker()
     }
@@ -87,11 +97,13 @@ final class FocusTimer: ObservableObject {
         guard state == .paused else { return }
         endDate = Date().addingTimeInterval(pausedRemaining)
         state = .running
+        lastResumeAt = Date()
         startTicker()
     }
 
     /// Back to Ready with the current session length.
     func reset() {
+        endTracking(completed: false)
         stopTicker()
         endDate = nil
         linkedTaskID = nil
@@ -127,6 +139,7 @@ final class FocusTimer: ObservableObject {
             pausedRemaining = TimeInterval(seconds)
             endDate = Date().addingTimeInterval(pausedRemaining)
             state = .running
+            beginTracking()
             startTicker()
         case .idle:
             sessionTotal += seconds
@@ -164,8 +177,39 @@ final class FocusTimer: ObservableObject {
         endDate = nil
         remaining = 0
         pausedRemaining = 0
+        endTracking(completed: true)
         state = .finished
-        NSSound(named: NSSound.Name("Glass"))?.play()
+        if AppSettings.shared.data.timerSound { NSSound(named: NSSound.Name("Glass"))?.play() }
+    }
+
+    // MARK: - Session tracking (counts only time the timer was really running)
+
+    private func beginTracking() {
+        sessionStartedAt = Date()
+        activeAccumulated = 0
+        lastResumeAt = Date()
+    }
+
+    private func accumulateActive() {
+        if let resumed = lastResumeAt { activeAccumulated += Date().timeIntervalSince(resumed) }
+        lastResumeAt = nil
+    }
+
+    /// Logs the session if one is in progress. Very short abandoned sessions are ignored.
+    private func endTracking(completed: Bool) {
+        guard let started = sessionStartedAt else { return }
+        accumulateActive()
+        let seconds = Int(activeAccumulated.rounded())
+        sessionStartedAt = nil
+        activeAccumulated = 0
+        guard completed || seconds >= 30 else { return }
+        sessionLogger?(FocusSession(taskID: linkedTaskID, startedAt: started, activeSeconds: seconds,
+                                    plannedSeconds: sessionTotal, completed: completed))
+    }
+
+    /// Call on quit so a running session is not lost.
+    func flushForQuit() {
+        if state == .running || state == .paused { endTracking(completed: false) }
     }
 
     // MARK: - Sleep handling (timers pause while the Mac sleeps)

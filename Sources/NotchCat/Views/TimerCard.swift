@@ -4,6 +4,10 @@ struct TimerCard: View {
     @ObservedObject var ui: PanelUIState
     @ObservedObject var store: TaskStore
     @ObservedObject var timer: FocusTimer
+    /// Width this card has been given; the clock and buttons scale to fit.
+    var width: CGFloat = 252
+
+    private var compact: Bool { width < 215 }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -40,7 +44,7 @@ struct TimerCard: View {
 
     private var clockBody: some View {
         VStack(spacing: 8) {
-            SevenSegmentClock(text: timer.remaining.clockString, maxWidth: 216, maxHeight: 66)
+            SevenSegmentClock(text: timer.remaining.clockString, maxWidth: width - 32, maxHeight: 66)
                 .opacity(timer.state == .paused ? 0.55 : 1)
 
             Text(statusText)
@@ -96,7 +100,8 @@ struct TimerCard: View {
                     SecondaryButton(title: nil, icon: "arrow.counterclockwise") { timer.reset() }
                         .help("Reset")
                 } else {
-                    SecondaryButton(title: "Set time", icon: "clock") { ui.modal = .timerDuration }
+                    SecondaryButton(title: compact ? nil : "Set time", icon: "clock") { ui.modal = .timerDuration }
+                        .help("Set time")
                 }
             }
         }

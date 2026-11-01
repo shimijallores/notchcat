@@ -2,18 +2,34 @@ import AppKit
 import SwiftUI
 import Combine
 
+/// What the compact island is showing.
+enum IslandKind: Equatable {
+    case timerFinished
+    case reminder(UUID)
+}
+
+enum PanelTab: String, CaseIterable, Identifiable {
+    case workspace = "Workspace", week = "Week", insights = "Insights", settings = "Settings"
+    var id: String { rawValue }
+}
+
 /// Shared UI state for the expanded panel.
 @MainActor
 final class PanelUIState: ObservableObject {
     enum Modal: Equatable {
         case taskLimit(UUID)
         case timerDuration
+        case customReminder(UUID)
     }
 
     enum Mode { case dashboard, island }
 
     @Published var expanded = false
     @Published var mode: Mode = .dashboard
+    @Published var tab: PanelTab = .workspace
+    @Published var islandKind: IslandKind = .timerFinished
+    /// A reminder that fired while the tray was already open; shown as a banner instead of the island.
+    @Published var banner: UUID?
     /// Size of the hardware notch: the shape the housing grows out of.
     @Published var notchSize = CGSize(width: 180, height: 32)
     @Published var modal: Modal?
@@ -52,6 +68,11 @@ final class NotchController {
     private let pillUI = PillUIState()
     private var pillGeneration = 0
 
+    private let settings = AppSettings.shared
+    private var reminders: ReminderScheduler?
+    /// Islands waiting for the current one to finish (a reminder landing during "Time's up", etc).
+    private var islandQueue: [IslandKind] = []
+
     init() {
         panel = FloatingPanel(contentRect: geometry.panelFrame)
         pill = PillPanel(contentRect: NSRect(x: 0, y: 0, width: 100, height: 24))
@@ -78,12 +99,34 @@ final class NotchController {
         bindPill()
         prewarm()
 
-        // When a session ends with the panel closed, the notch stretches into a compact island.
+        // When a session ends, the notch stretches into a compact "Time's up" island.
         timer.$state.removeDuplicates()
             .receive(on: RunLoop.main)
             .sink { [weak self] state in
-                guard let self, state == .finished, !self.ui.expanded else { return }
-                self.show(pinned: true, mode: .island)
+                guard let self, state == .finished, self.settings.data.timeUpIsland else { return }
+                self.present(.timerFinished)
+            }
+            .store(in: &cancellables)
+
+        // Reminders come due -> island (or a banner if the tray is already open).
+        reminders = ReminderScheduler(store: store, settings: settings) { [weak self] task in
+            self?.present(.reminder(task.id))
+        }
+
+        // The tray resizes to fit the visible cards and the current tab.
+        ui.$tab.dropFirst().receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.resizePanel() }
+            .store(in: &cancellables)
+        settings.$data.map(\.cards).removeDuplicates().dropFirst().receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.resizePanel() }
+            .store(in: &cancellables)
+        // Hiding a tab you are on sends you back to the workspace.
+        settings.$data.receive(on: RunLoop.main)
+            .sink { [weak self] data in
+                guard let self else { return }
+                if (self.ui.tab == .week && !data.showWeekTab) || (self.ui.tab == .insights && !data.showInsightsTab) {
+                    self.ui.tab = .workspace
+                }
             }
             .store(in: &cancellables)
 
@@ -139,11 +182,71 @@ final class NotchController {
         stopExitPoll()
         ui.expanded = false
         ui.modal = nil
+        ui.banner = nil
         container.animate(expanded: false)
         panel.ignoresMouseEvents = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.36) { [weak self] in
             guard let self, !self.ui.expanded else { return }
             self.panel.orderOut(nil)
+            // Show whatever was waiting behind the island that just closed.
+            if !self.islandQueue.isEmpty {
+                let next = self.islandQueue.removeFirst()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in self?.present(next) }
+            }
+        }
+    }
+
+    // MARK: - Islands and banners
+
+    /// Shows a compact island for a finished timer or a reminder, without disturbing what the user is doing.
+    func present(_ kind: IslandKind) {
+        if settings.data.timerSound {
+            switch kind {
+            case .reminder: NSSound(named: NSSound.Name("Ping"))?.play()
+            case .timerFinished: break   // the timer plays its own sound
+            }
+        }
+
+        if ui.expanded && ui.mode == .dashboard {
+            // The tray is open: a reminder becomes a banner inside it; the timer card already says "Time's up".
+            if case .reminder(let id) = kind { ui.banner = id }
+            return
+        }
+        if ui.expanded && ui.mode == .island {
+            if ui.islandKind != kind, !islandQueue.contains(kind) { islandQueue.append(kind) }
+            return
+        }
+        ui.islandKind = kind
+        show(pinned: true, mode: .island)
+    }
+
+    // MARK: - Panel size
+
+    private func desiredPanelWidth() -> CGFloat {
+        switch ui.tab {
+        case .workspace:
+            let cards = settings.visibleCards
+            return cards.reduce(0) { $0 + $1.preferredWidth } + 10 * CGFloat(max(cards.count - 1, 0)) + 24
+        case .week: return 840
+        case .insights, .settings: return 780
+        }
+    }
+
+    /// Re-fits the tray after a tab or card change, easing the width when it is on screen.
+    private func resizePanel() {
+        guard ui.mode == .dashboard else { return }
+        geometry = .current()
+        let frame = geometry.panelFrame(width: desiredPanelWidth())
+        guard frame != panel.frame else { return }
+        ui.size = frame.size
+        if ui.expanded, panel.isVisible {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.22
+                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1)
+                panel.animator().setFrame(frame, display: true)
+            }
+        } else {
+            panel.setFrame(frame, display: true)
         }
     }
 
@@ -184,33 +287,45 @@ final class NotchController {
                 if now > 6 { t.invalidate(); return }
                 let f = self.panel.frame
                 let m = self.container.debugMask()
-                let line = "frame y=\(f.origin.y) h=\(f.height) top=\(f.maxY) screenTop=\(self.geometry.screen.frame.maxY) vis=\(self.panel.isVisible) key=\(self.panel.isKeyWindow) | mask \(m)"
-                if line != last { print(String(format: "%.3f ", now) + line); last = line }
+                let line = "frame x=\(f.origin.x) w=\(f.width) y=\(f.origin.y) h=\(f.height) top=\(f.maxY) screenTop=\(self.geometry.screen.frame.maxY) vis=\(self.panel.isVisible) key=\(self.panel.isKeyWindow) | mask \(m)"
+                if line != last { FileHandle.standardError.write(Data((String(format: "%.3f ", now) + line + "\n").utf8)); last = line }
             }
         }
     }
 
     // MARK: - Developer snapshot (--snapshot <dir>)
 
-    /// Renders the expanded panel and the pill to PNGs without needing screen-recording access.
+    /// Renders every tab, the duration modal and the pill to PNGs without needing screen-recording access.
     func writeSnapshots(to dir: URL, completion: @escaping () -> Void) {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         show(pinned: true)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-            self.snapshot(self.container.host, to: dir.appendingPathComponent("panel.png"))
-            self.ui.modal = .timerDuration
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                self.snapshot(self.container.host, to: dir.appendingPathComponent("modal.png"))
-                self.ui.modal = nil
-                self.hide()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                    self.snapshot(self.pill.contentView, to: dir.appendingPathComponent("pill.png"))
-                    print("pill frame:", self.pill.frame, "visible:", self.pill.isVisible,
-                          "notch:", self.geometry.notchRect, "hasNotch:", self.geometry.hasNotch)
-                    completion()
+
+        let tabs: [PanelTab] = [.workspace, .week, .insights, .settings]
+        func step(_ index: Int) {
+            guard index < tabs.count else { return finish() }
+            ui.tab = tabs[index]
+            DispatchQueue.main.asyncAfter(deadline: .now() + (index == 0 ? 1.0 : 0.7)) {
+                self.snapshot(self.container.host, to: dir.appendingPathComponent("tab-\(tabs[index].rawValue.lowercased()).png"))
+                step(index + 1)
+            }
+        }
+
+        func finish() {
+            ui.tab = .workspace
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                self.ui.modal = .timerDuration
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    self.snapshot(self.container.host, to: dir.appendingPathComponent("modal.png"))
+                    self.ui.modal = nil
+                    self.hide()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                        self.snapshot(self.pill.contentView, to: dir.appendingPathComponent("pill.png"))
+                        completion()
+                    }
                 }
             }
         }
+        step(0)
     }
 
     private func snapshot(_ view: NSView?, to url: URL) {
@@ -223,7 +338,7 @@ final class NotchController {
 
     private func applyGeometry() {
         geometry = .current()
-        let frame = ui.mode == .island ? geometry.islandFrame : geometry.panelFrame
+        let frame = ui.mode == .island ? geometry.islandFrame : geometry.panelFrame(width: desiredPanelWidth())
         ui.size = frame.size
         ui.notchSize = geometry.notchRect.size
         ui.headerHeight = geometry.menuBarHeight
@@ -245,11 +360,12 @@ final class NotchController {
     // MARK: - Pill visibility
 
     private func bindPill() {
-        Publishers.CombineLatest3(timer.$state, timer.$remaining, ui.$expanded)
+        let showPill = settings.$data.map(\.showPill).removeDuplicates()
+        Publishers.CombineLatest4(timer.$state, timer.$remaining, ui.$expanded, showPill)
             .receive(on: RunLoop.main)
-            .sink { [weak self] state, _, expanded in
+            .sink { [weak self] state, _, expanded, showPill in
                 guard let self else { return }
-                let shouldShow = state != .idle && !expanded
+                let shouldShow = state != .idle && !expanded && showPill
                 if shouldShow {
                     self.layoutPill()
                     if !self.pill.isVisible {
@@ -305,7 +421,7 @@ final class NotchController {
     }
 
     private func mouseMoved() {
-        guard !ui.expanded else { return }
+        guard !ui.expanded, settings.data.hoverToOpen else { return }
         let p = NSEvent.mouseLocation
         let inside = geometry.hoverRect.contains(p)
         if !inside {

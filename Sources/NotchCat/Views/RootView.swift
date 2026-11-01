@@ -1,13 +1,14 @@
 import SwiftUI
 
 /// The expanded drop-down: one dark housing holding separate pastel cards.
+/// Laid out once at full size; `DropContainerView` animates the silhouette around it.
 struct RootView: View {
     @ObservedObject var ui: PanelUIState
     @ObservedObject var store: TaskStore
     @ObservedObject var timer: FocusTimer
+    @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
-        // Laid out once at full size; the container animates the silhouette around it.
         content
             .frame(width: ui.size.width, height: ui.size.height, alignment: .top)
     }
@@ -22,14 +23,17 @@ struct RootView: View {
 
     private var dashboard: some View {
         VStack(spacing: 0) {
-            HeaderBar(ui: ui)
-            HStack(spacing: 10) {
-                TasksCard(ui: ui, store: store, timer: timer)
-                TimerCard(ui: ui, store: store, timer: timer)
-                    .frame(width: 252)
+            HeaderBar(ui: ui, settings: settings)
+            tabBody
+                .padding(.horizontal, 12)
+                .padding(.bottom, 12)
+        }
+        .overlay(alignment: .top) {
+            if let id = ui.banner {
+                ReminderBanner(ui: ui, store: store, taskID: id)
+                    .padding(.top, ui.headerHeight + 6)
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 12)
         }
         .overlay {
             if let modal = ui.modal {
@@ -38,13 +42,71 @@ struct RootView: View {
             }
         }
         .animation(.easeOut(duration: 0.16), value: ui.modal)
+        .animation(.spring(duration: 0.3, bounce: 0.08), value: ui.banner)
         .environment(\.colorScheme, .light)
+    }
+
+    @ViewBuilder
+    private var tabBody: some View {
+        switch ui.tab {
+        case .workspace: WorkspaceView(ui: ui, store: store, timer: timer, settings: settings)
+        case .week: WeekView(store: store, ui: ui)
+        case .insights: InsightsView(store: store)
+        case .settings: SettingsView(settings: settings, calendar: CalendarStore.shared)
+        }
+    }
+}
+
+/// The cards the user has switched on, in the order they chose. Tasks get the most room.
+struct WorkspaceView: View {
+    @ObservedObject var ui: PanelUIState
+    @ObservedObject var store: TaskStore
+    @ObservedObject var timer: FocusTimer
+    @ObservedObject var settings: AppSettings
+
+    private let gap: CGFloat = 10
+
+    private func weight(_ card: CardID) -> CGFloat { card == .tasks ? 1.5 : 1 }
+
+    var body: some View {
+        let cards = settings.visibleCards
+        let available = ui.size.width - 24 - gap * CGFloat(max(cards.count - 1, 0))
+        let totalWeight = cards.reduce(0) { $0 + weight($1) }
+
+        HStack(spacing: gap) {
+            ForEach(cards) { card in
+                let width = available * weight(card) / max(totalWeight, 1)
+                view(for: card, width: width)
+                    .frame(width: width)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func view(for card: CardID, width: CGFloat) -> some View {
+        switch card {
+        case .tasks: TasksCard(ui: ui, store: store, timer: timer)
+        case .timer: TimerCard(ui: ui, store: store, timer: timer, width: width)
+        case .notepad: NotepadCard(notes: NoteStore.shared, store: store)
+        case .events: EventsCard(calendar: CalendarStore.shared, store: store, settings: settings)
+        }
     }
 }
 
 /// Brand on the left, tabs on the right, with the hardware notch left empty in the middle.
 struct HeaderBar: View {
     @ObservedObject var ui: PanelUIState
+    @ObservedObject var settings: AppSettings
+
+    private var tabs: [PanelTab] {
+        PanelTab.allCases.filter {
+            switch $0 {
+            case .week: return settings.data.showWeekTab
+            case .insights: return settings.data.showInsightsTab
+            default: return true
+            }
+        }
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -57,34 +119,113 @@ struct HeaderBar: View {
 
             Spacer(minLength: ui.notchWidth + 24)
 
-            HStack(spacing: 6) {
-                Text("Workspace")
-                    .font(.system(size: 11.5, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
-                    .padding(.horizontal, 11).padding(.vertical, 4)
-                    .background(Capsule().fill(Theme.amber))
-
-                Menu {
-                    Button("Quit NotchCat") { NSApp.terminate(nil) }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.65))
+            HStack(spacing: 3) {
+                ForEach(tabs.filter { $0 != .settings }) { tab in tabButton(tab) }
+                Button { ui.tab = .settings } label: {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(ui.tab == .settings ? Theme.ink : .white.opacity(0.6))
                         .frame(width: 26, height: 22)
-                        .contentShape(Rectangle())
+                        .background(Capsule().fill(ui.tab == .settings ? Theme.amber : .clear))
+                        .contentShape(Capsule())
                 }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
+                .buttonStyle(.plain)
+                .help("Settings")
             }
         }
         .padding(.horizontal, 22)
         .frame(height: ui.headerHeight)
         .environment(\.colorScheme, .dark)
     }
+
+    private func tabButton(_ tab: PanelTab) -> some View {
+        let selected = ui.tab == tab
+        return Button { ui.tab = tab } label: {
+            Text(tab.rawValue)
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(selected ? Theme.ink : .white.opacity(0.6))
+                .padding(.horizontal, 10).padding(.vertical, 4)
+                .background(Capsule().fill(selected ? Theme.amber : .clear))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
 }
 
-/// Dims the housing and shows the "Focus duration" popover.
+/// A reminder that fired while the tray was open.
+struct ReminderBanner: View {
+    @ObservedObject var ui: PanelUIState
+    @ObservedObject var store: TaskStore
+    let taskID: UUID
+
+    var body: some View {
+        if let task = store.task(id: taskID) {
+            HStack(spacing: 10) {
+                MascotView(size: 26)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(task.title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                    Text("Reminder").font(.system(size: 10.5)).opacity(0.55)
+                }
+                Spacer(minLength: 8)
+                ReminderButtons(taskID: taskID) { ui.banner = nil }
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .frame(width: min(ui.size.width - 80, 460))
+            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.housingRaised))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.white.opacity(0.1)))
+            .shadow(color: .black.opacity(0.45), radius: 16, y: 6)
+            .environment(\.colorScheme, .dark)
+        }
+    }
+}
+
+/// "zZ snooze" and "✓ Done", shared by the banner and the island.
+struct ReminderButtons: View {
+    let taskID: UUID
+    let onFinished: () -> Void
+    @ObservedObject private var settings = AppSettings.shared
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button {
+                TaskStore.shared.snooze(taskID, minutes: settings.data.snoozeMinutes)
+                onFinished()
+            } label: {
+                HStack(spacing: 4) {
+                    Text("zZ").font(.system(size: 11, weight: .heavy, design: .rounded))
+                    Text("\(settings.data.snoozeMinutes) min").font(.system(size: 12, weight: .semibold, design: .rounded))
+                }
+                .lineLimit(1)
+                .fixedSize()
+                .foregroundStyle(.white.opacity(0.88))
+                .padding(.horizontal, 11).padding(.vertical, 7)
+                .background(Capsule().fill(.white.opacity(0.12)))
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                let store = TaskStore.shared
+                if let t = store.task(id: taskID), !t.isDone { store.toggleDone(taskID) }
+                onFinished()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark").font(.system(size: 10, weight: .bold))
+                    Text("Done").font(.system(size: 12, weight: .semibold, design: .rounded))
+                }
+                .lineLimit(1)
+                .fixedSize()
+                .foregroundStyle(Theme.ink)
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(Capsule().fill(Theme.amber))
+            }
+            .buttonStyle(.plain)
+        }
+        .fixedSize()
+    }
+}
+
+/// Dims the housing and shows a small popover.
 struct ModalHost: View {
     @ObservedObject var ui: PanelUIState
     @ObservedObject var store: TaskStore
@@ -96,18 +237,27 @@ struct ModalHost: View {
             Color.black.opacity(0.5)
                 .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 30, bottomTrailingRadius: 30, style: .continuous))
                 .onTapGesture { ui.modal = nil }
-            FocusDurationModal(initialMinutes: initialMinutes,
-                               allowsClear: allowsClear,
-                               onSave: save,
-                               onClear: clear,
-                               onCancel: { ui.modal = nil })
+            switch modal {
+            case .customReminder(let id):
+                CustomReminderModal(
+                    existing: store.task(id: id)?.remindAt,
+                    onSave: { store.setReminder(id, at: $0); ui.modal = nil },
+                    onClear: { store.setReminder(id, at: nil); ui.modal = nil },
+                    onCancel: { ui.modal = nil })
+            default:
+                FocusDurationModal(initialMinutes: initialMinutes,
+                                   allowsClear: allowsClear,
+                                   onSave: save,
+                                   onClear: clear,
+                                   onCancel: { ui.modal = nil })
+            }
         }
     }
 
     private var initialMinutes: Int {
         switch modal {
-        case .taskLimit(let id): return store.task(id: id)?.timeLimitMinutes ?? store.defaultFocusMinutes
-        case .timerDuration: return timer.sessionTotal / 60
+        case .taskLimit(let id): return store.task(id: id)?.timeLimitMinutes ?? AppSettings.shared.data.defaultFocusMinutes
+        default: return timer.sessionTotal / 60
         }
     }
 
@@ -120,9 +270,9 @@ struct ModalHost: View {
         switch modal {
         case .taskLimit(let id):
             store.setTimeLimit(id, minutes: minutes)
-        case .timerDuration:
+        default:
             timer.setDuration(minutes: minutes)
-            store.defaultFocusMinutes = minutes
+            AppSettings.shared.data.defaultFocusMinutes = minutes
         }
         ui.modal = nil
     }
@@ -130,5 +280,59 @@ struct ModalHost: View {
     private func clear() {
         if case .taskLimit(let id) = modal { store.setTimeLimit(id, minutes: nil) }
         ui.modal = nil
+    }
+}
+
+/// Pick an exact date and time for a reminder.
+struct CustomReminderModal: View {
+    let existing: Date?
+    let onSave: (Date) -> Void
+    let onClear: () -> Void
+    let onCancel: () -> Void
+
+    @State private var date = Date().addingTimeInterval(3600)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Remind me")
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+
+            DatePicker("", selection: $date, in: Date()..., displayedComponents: [.date, .hourAndMinute])
+                .datePickerStyle(.stepperField)
+                .labelsHidden()
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(spacing: 8) {
+                if existing != nil {
+                    Button("Clear", action: onClear)
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.55))
+                }
+                Spacer()
+                Button("Cancel", action: onCancel)
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                Button { onSave(date) } label: {
+                    Text("Set reminder")
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundStyle(Theme.ink)
+                        .padding(.horizontal, 16).padding(.vertical, 7)
+                        .background(Capsule().fill(Theme.amber))
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .foregroundStyle(.white)
+        .environment(\.colorScheme, .dark)
+        .padding(18)
+        .frame(width: 320)
+        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Theme.housingRaised))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(.white.opacity(0.08)))
+        .shadow(color: .black.opacity(0.5), radius: 24, y: 8)
+        .onAppear { if let existing, existing > Date() { date = existing } }
     }
 }

@@ -2,16 +2,22 @@
 
 A tasks and focus-timer dashboard that lives in your MacBook's notch. Hover the notch (or press **⌥N**) and a tray grows out of it with your tasks and a pomodoro timer. Close it and a slim dot-matrix countdown stays docked beside the notch.
 
-Native macOS app, SwiftUI + AppKit. Local-first: your data never leaves your Mac.
+Native macOS app, SwiftUI + AppKit, SQLite storage. Local-first: your data never leaves your Mac.
 
-## Features (v1)
+## Features
 
-- **Notch-anchored tray.** The black shape starts as the notch itself and grows into the dashboard, then retracts straight back up. It is driven by Core Animation springs and never overshoots.
+- **Notch-anchored tray.** The black shape starts as the notch itself and grows into the dashboard, then retracts straight back up. Driven by Core Animation springs that never overshoot.
+- **Workspace cards.** Tasks, Focus timer, Notepad and Events & reminders. Show or hide each one and reorder them in Settings; the tray resizes to fit.
 - **Tasks.** Quick add, completion counter, drag to reorder, Today / Tomorrow. Unfinished tasks roll over to the next day.
-  - Row menu: Focus, Mark as Done, Rename, Set Time Limit, Move to Tomorrow, Duplicate, Delete.
-- **Focus timer.** Seven-segment clock, Start / Pause / Reset, and a "Focus duration" popover (15 / 25 / 45 / 60 min or custom). Starting **Focus** on a task attaches the session to it and shows an "Active session" badge. The timer pauses while the Mac sleeps.
-- **Menu-bar pill.** With a session running and the tray closed, a black capsule with white dot-matrix digits sits on the right shoulder of the notch. Click it to open the tray. It is invisible when idle and blinks amber at 00:00.
-- **Time's up island.** When a session ends, the notch stretches into a compact capsule with **+5 min** and **Done**.
+  - Row menu: Focus, Mark as Done, Rename, Set Time Limit, **Remind Me**, Move to Tomorrow, Duplicate, Delete.
+- **Remind Me.** Presets (30 min, 1 hour, this evening, tomorrow morning) or a custom date and time. When it fires, the notch drops a card with the task, **zZ snooze** and **✓ Done**. If the tray is already open it appears as a banner instead.
+- **Focus timer.** Seven-segment clock, Start / Pause / Reset, and a duration popover. **Focus** on a task attaches the session to it. The timer pauses while the Mac sleeps.
+- **Menu-bar pill.** With a session running and the tray closed, a dot-matrix countdown sits on the right shoulder of the notch. When time is up, the notch drops a "Time's up" card with **+5 min** and **Done**.
+- **Notepad.** One note per day, autosaved, with a word count. **⌘↵** turns the line under the cursor into a task and marks it ✓.
+- **Events.** Today's Apple Calendar events (read-only) merged with your timed reminders, with "Happening now". Calendar access is optional and only requested when you press Connect.
+- **Week.** The next seven days as columns. Drag a task onto any day to re-plan it, or add one in place.
+- **Insights.** "Momentum is building" summary, tasks completed vs planned, focus time, and a 7-day stacked bar chart (Tasks / Focus toggle, step back through earlier weeks, tap a bar for details).
+- **Settings.** Card visibility and order, Week / Insights tabs, countdown pill, default focus length, sounds, "Time's up" card, reminders and snooze length, hover-to-open, the ⌥N shortcut, paper grain, open at login, database backup, and quit.
 - Works on Macs without a notch (the tray opens top-center), though this is less tested.
 
 ## Requirements
@@ -30,7 +36,7 @@ open build/NotchCat.app
 
 The app has no Dock icon. Look for the cat in the menu bar. On first launch from Finder you may need to right-click → Open, since it is not notarized.
 
-**From Xcode:** open `Package.swift`, choose the **NotchCat** scheme with **My Mac**, and press ⌘R. Run from the `.app` build to see the real mascot, because running through Xcode launches the bare binary without bundled resources.
+**From Xcode:** open `Package.swift`, choose the **NotchCat** scheme with **My Mac**, and press ⌘R. Stop that run before launching the packaged app, otherwise two copies compete for ⌥N and each shows a menu-bar cat. Connecting Calendar only works in the packaged app, because macOS needs the usage text from its `Info.plist`; elsewhere the Events card says so and still shows your reminders.
 
 ## Using it
 
@@ -39,31 +45,43 @@ The app has no Dock icon. Look for the cat in the menu bar. On first launch from
 | Open the tray | Hover the notch, press **⌥N**, click the pill, or use the menu-bar cat |
 | Keep it open | Click anywhere inside it (hover-opened trays close when the pointer leaves) |
 | Close it | Click outside, press **Esc**, or press **⌥N** again |
-| Quit | `⋯` menu in the tray header, or the menu-bar cat |
+| Quit | Settings → Quit NotchCat, or the menu-bar cat |
 
 Hover opening needs no special permissions. ⌥N is registered through Carbon and also needs none. If another app already owns ⌥N, the hotkey will not register.
 
 ## Data
 
-Tasks and your default focus length are saved as JSON at:
+Everything is stored in one SQLite database (WAL mode, no third-party packages):
 
 ```
-~/Library/Application Support/NotchCat/state.json
+~/Library/Application Support/NotchCat/notchcat.sqlite
 ```
 
-A running timer is not persisted across launches.
+| Table | Holds |
+| --- | --- |
+| `tasks` | Title, done state, day, original planned day, order, time limit, reminder |
+| `focus_sessions` | Each finished or abandoned session with the seconds it was really running |
+| `notes` | One note per day |
+| `settings` | App settings as JSON |
+
+Schema changes are versioned migrations (`PRAGMA user_version`, see `Database.swift`). If you used v1, its `state.json` is imported once and kept as `state.json.imported`. **Settings → Back up database** writes a consistent copy to Downloads. A running timer is not persisted across launches.
+
+You can inspect it with `sqlite3 ~/Library/Application\ Support/NotchCat/notchcat.sqlite`.
 
 ## Project layout
 
 ```
 Sources/NotchCat/
   App/      main.swift, AppDelegate (hotkey, menu-bar item, dev flags)
-  Models/   TaskItem, TaskStore (persistence, rollover), FocusTimer
-  Notch/    NotchController (hover / click-away / state), NotchGeometry,
+  Data/     Database (SQLite wrapper + migrations), Repositories, DemoData (dev only)
+  Models/   TaskStore, NoteStore, FocusTimer, AppSettings, ReminderScheduler,
+            CalendarStore (EventKit), InsightsModel
+  Notch/    NotchController (hover / click-away / islands / sizing), NotchGeometry,
             NotchPanels, DropContainerView (Core Animation silhouette), HotKey
-  Views/    RootView, TasksCard, TimerCard, IslandView, FocusDurationModal,
-            DotMatrix (pill), SevenSegment, Theme
-Resources/  Info.plist (menu-bar agent, LSUIElement)
+  Views/    RootView (tabs, workspace, banner, modals), TasksCard, TimerCard, NotepadCard,
+            EventsCard, WeekView, InsightsView, SettingsView, IslandView,
+            FocusDurationModal, DotMatrix (pill), SevenSegment, Theme
+Resources/  Info.plist (menu-bar agent, calendar usage text)
 brand/      zi-mascot.png
 scripts/    build-app.sh, make-icon.swift
 REFERENCE.md  design/behaviour spec this app was built from
@@ -73,18 +91,20 @@ How the animation works: the SwiftUI tree is laid out once at full size and is n
 
 ## Developer flags
 
-Pass these to `build/NotchCat.app/Contents/MacOS/NotchCat`:
+Pass these to `build/NotchCat.app/Contents/MacOS/NotchCat`. Set `NOTCHCAT_DB=/tmp/test.sqlite` to run against a throwaway database; the flags that create data refuse to run without it.
 
 | Flag | Effect |
 | --- | --- |
-| `--open` | Open the tray at launch (pinned) |
-| `--open-hover` | Open the tray as if hovered |
-| `--demo` | Start a 25-minute timer |
-| `--demo-secs N` | Start an N-second timer (to see the island) |
+| `--open` / `--open-hover` | Open the tray at launch (pinned / as if hovered) |
+| `--tab NAME` / `--tab-after S NAME` | Start on a tab, or switch after S seconds |
+| `--demo` / `--demo-secs N` | Start a 25-minute / N-second timer |
 | `--close-after S` | Close the tray after S seconds |
-| `--snapshot DIR` | Render panel / modal / pill PNGs to DIR, then quit |
-| `--log-frames` | Log window and mask geometry per frame |
+| `--seed-demo` | Fill the test database with two weeks of sample history |
+| `--remind-in S` | Add a task with a reminder S seconds out |
+| `--snapshot DIR` | Render each tab, the modal and the pill to PNGs, then quit |
+| `--selftest-note`, `--selftest-settings` | Run non-UI checks and quit |
+| `--log-frames` | Log window and mask geometry per frame (stderr) |
 
-## Not in v1
+## Not built yet
 
-Insights, Notepad, Events / Calendar, voice input, Remind Me and reminder notifications, the Week and Settings tabs, and MCP / AI-agent integration. See `REFERENCE.md` for the full target.
+Voice input, MCP / AI-agent integration, and Apple Reminders sync. See `REFERENCE.md` for the full target.
