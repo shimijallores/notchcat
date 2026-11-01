@@ -20,6 +20,25 @@ Native macOS app, SwiftUI + AppKit, SQLite storage. Local-first: your data never
 - **Settings.** Card visibility and order, Week / Insights tabs, countdown pill, default focus length, sounds, "Time's up" card, reminders and snooze length, hover-to-open, the ⌥N shortcut, paper grain, open at login, database backup, and quit.
 - Works on Macs without a notch (the tray opens top-center), though this is less tested.
 
+## Install
+
+NotchCat is open source and not notarized (that needs a paid Apple Developer account), so macOS warns the first time you open a downloaded build. This is expected for an unsigned app.
+
+**Download a build**
+
+1. Grab `NotchCat.dmg` from the [latest release](https://github.com/shimijallores/notchcat/releases/latest).
+2. Open it and drag NotchCat onto the Applications shortcut.
+3. Launch it from Applications. macOS says it can't verify the developer.
+4. Open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to the NotchCat message. Confirm once.
+
+If that option doesn't appear, run this in Terminal, then open the app:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/NotchCat.app
+```
+
+**Build it yourself** (no warning, since it's built on your own Mac): see [Build and run](#build-and-run).
+
 ## Requirements
 
 - macOS 14 or later, Apple silicon
@@ -37,6 +56,14 @@ open build/NotchCat.app
 The app has no Dock icon. Look for the cat in the menu bar. On first launch from Finder you may need to right-click → Open, since it is not notarized.
 
 **From Xcode:** open `Package.swift`, choose the **NotchCat** scheme with **My Mac**, and press ⌘R. Stop that run before launching the packaged app, otherwise two copies compete for ⌥N and each shows a menu-bar cat. Connecting Calendar only works in the packaged app, because macOS needs the usage text from its `Info.plist`; elsewhere the Events card says so and still shows your reminders.
+
+**Build a DMG** to share:
+
+```bash
+./scripts/make-dmg.sh   # produces build/NotchCat.dmg
+```
+
+Pushing a `v*` tag builds the DMG on a macOS runner and attaches it to a GitHub Release (see `.github/workflows/release.yml`). The build is unsigned either way.
 
 ## Using it
 
@@ -108,3 +135,7 @@ Pass these to `build/NotchCat.app/Contents/MacOS/NotchCat`. Set `NOTCHCAT_DB=/tm
 ## Not built yet
 
 Voice input, MCP / AI-agent integration, and Apple Reminders sync. See `REFERENCE.md` for the full target.
+
+## License
+
+[MIT](LICENSE). The bundled mascot artwork is a project trademark and is not covered by the MIT license.
