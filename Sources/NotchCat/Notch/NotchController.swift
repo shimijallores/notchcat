@@ -51,11 +51,14 @@ final class NotchController {
     private let timer = FocusTimer.shared
     let ui = PanelUIState()
 
-    private var geometry = NotchGeometry.current()
+    private var geometry = NotchGeometry.current(fake: AppSettings.shared.data.fakeNotch)
     private let panel: FloatingPanel
     private let container: DropContainerView
     private let pill: PillPanel
     private let chip: PillPanel
+    /// Black notch / island drawn on screens without a hardware notch.
+    private let fakeNotch: PillPanel
+    private var fakeGeneration = 0
 
     private var pinned = false
     private var hoverArmed = true
@@ -82,6 +85,7 @@ final class NotchController {
         panel = FloatingPanel(contentRect: geometry.panelFrame)
         pill = PillPanel(contentRect: NSRect(x: 0, y: 0, width: 100, height: 24))
         chip = PillPanel(contentRect: NSRect(x: 0, y: 0, width: 60, height: 24))
+        fakeNotch = PillPanel(contentRect: NSRect(x: 0, y: 0, width: 180, height: 24))
 
         // All stored properties must exist before any closure captures `self`.
         let root = RootView(ui: ui, store: store, timer: timer)
@@ -108,10 +112,15 @@ final class NotchController {
         chipHost.sizingOptions = []
         chip.contentView = chipHost
 
+        let fakeView = FakeNotchView()
+        fakeView.onClick = { [weak self] in self?.show(pinned: true) }
+        fakeNotch.contentView = fakeView
+
         applyGeometry()
         installMonitors()
         bindPill()
         bindChip()
+        bindFakeNotch()
         prewarm()
 
         // When a session ends, the notch stretches into a compact "Time's up" island.
@@ -250,7 +259,7 @@ final class NotchController {
     /// Re-fits the tray after a tab or card change, easing the width when it is on screen.
     private func resizePanel() {
         guard ui.mode == .dashboard else { return }
-        geometry = .current()
+        geometry = currentGeometry()
         let frame = geometry.panelFrame(width: desiredPanelWidth())
         guard frame != panel.frame else { return }
         ui.size = frame.size
@@ -352,7 +361,7 @@ final class NotchController {
     // MARK: - Geometry
 
     private func applyGeometry() {
-        geometry = .current()
+        geometry = currentGeometry()
         let frame = ui.mode == .island ? geometry.islandFrame : geometry.panelFrame(width: desiredPanelWidth())
         ui.size = frame.size
         ui.notchSize = geometry.notchRect.size
@@ -363,6 +372,11 @@ final class NotchController {
                             radius: ui.mode == .island ? 24 : 30,
                             expanded: ui.expanded)
         layoutPill()
+        layoutFakeNotch()
+    }
+
+    private func currentGeometry() -> NotchGeometry {
+        NotchGeometry.current(fake: settings.data.fakeNotch)
     }
 
     private func layoutPill(animated: Bool = false) {
@@ -422,6 +436,62 @@ final class NotchController {
                 }
             }
             .store(in: &cancellables)
+    }
+
+    // MARK: - Fake notch / island
+
+    private func layoutFakeNotch() {
+        guard geometry.fakeStyle != .off else { return }
+        var frame = geometry.fakeNotchFrame
+        // Developer: shift sideways so it can be seen next to a real notch in screenshots.
+        if let dx = ProcessInfo.processInfo.environment["NOTCHCAT_FAKE_OFFSET_X"].flatMap(Double.init) { frame.origin.x += dx }
+        fakeNotch.setFrame(frame, display: true)
+        (fakeNotch.contentView as? FakeNotchView)?.style = geometry.fakeStyle
+    }
+
+    private func bindFakeNotch() {
+        let style = settings.$data.map(\.fakeNotch).removeDuplicates()
+        // A style change re-lays everything out, because the pill and chip line up against the shape.
+        style.dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.applyGeometry() }
+            .store(in: &cancellables)
+
+        // The shape fades out as the tray's own silhouette takes over, and returns once it has retracted.
+        Publishers.CombineLatest(style, ui.$expanded)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _, expanded in self?.setFakeNotchVisible(!expanded) }
+            .store(in: &cancellables)
+    }
+
+    private func setFakeNotchVisible(_ visible: Bool) {
+        fakeGeneration += 1
+        let gen = fakeGeneration
+        guard geometry.fakeStyle != .off else {
+            fakeNotch.orderOut(nil)
+            return
+        }
+        if visible {
+            layoutFakeNotch()
+            fakeNotch.alphaValue = 0
+            fakeNotch.orderFrontRegardless()
+            DispatchQueue.main.asyncAfter(deadline: .now() + (ui.expanded ? 0 : 0.28)) { [weak self] in
+                guard let self, gen == self.fakeGeneration else { return }
+                NSAnimationContext.runAnimationGroup { ctx in
+                    ctx.duration = 0.16
+                    self.fakeNotch.animator().alphaValue = 1
+                }
+            }
+        } else {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.08
+                fakeNotch.animator().alphaValue = 0
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                guard let self, gen == self.fakeGeneration else { return }
+                self.fakeNotch.orderOut(nil)
+            }
+        }
     }
 
     // MARK: - Music chip

@@ -209,12 +209,51 @@ struct TasksCard: View {
 
     private var footer: some View {
         HStack {
-            Text("Drag to reorder")
+            if let estimate = estimateLabel {
+                Label(estimate, systemImage: "hourglass")
+                    .labelStyle(.titleAndIcon)
+                    .help("Estimated time to finish every unfinished task that has a time limit")
+            }
             Spacer()
             Text(store.date(for: day), format: .dateTime.weekday(.abbreviated).day().month(.abbreviated))
         }
         .font(.system(size: 10.5, weight: .medium))
         .opacity(0.5)
+    }
+
+    // MARK: Estimate
+
+    /// Seconds of focus still needed across the unfinished tasks that have a time limit.
+    /// A task whose session is running or paused counts only what is left on the timer.
+    private var estimateSeconds: Int {
+        tasks.filter { !$0.isDone }.reduce(0) { total, task in
+            guard let minutes = task.timeLimitMinutes else { return total }
+            let inSession = timer.linkedTaskID == task.id && (timer.state == .running || timer.state == .paused)
+            return total + (inSession ? min(timer.remaining, minutes * 60) : minutes * 60)
+        }
+    }
+
+    /// "1:05pm (5h 10m)": local finish time if you started now, then the total. Nil when no task has a limit.
+    private var estimateLabel: String? {
+        let seconds = estimateSeconds
+        guard seconds > 0 else { return nil }
+        let minutes = (seconds + 59) / 60
+        let duration = Self.durationText(minutes: minutes)
+        // The clock time only makes sense for today's list; tomorrow's tasks can't start now.
+        guard day == .today else { return "\(duration) planned" }
+        let finish = Date().addingTimeInterval(TimeInterval(minutes * 60))
+        var clock = finish.formatted(.dateTime.hour().minute())
+            .replacingOccurrences(of: "\u{202F}", with: "")
+            .replacingOccurrences(of: " ", with: "")
+            .lowercased()
+        if !Calendar.current.isDateInToday(finish) { clock = "tomorrow " + clock }
+        return "\(clock) (\(duration))"
+    }
+
+    private static func durationText(minutes: Int) -> String {
+        let h = minutes / 60, m = minutes % 60
+        if h == 0 { return "\(m)m" }
+        return m == 0 ? "\(h)h" : "\(h)h \(m)m"
     }
 
     // MARK: Actions

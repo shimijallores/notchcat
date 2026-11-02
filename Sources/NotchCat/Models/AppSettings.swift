@@ -41,6 +41,19 @@ enum CardID: String, Codable, CaseIterable, Identifiable {
     var onByDefault: Bool { self != .music }
 }
 
+/// What to draw at the top of a screen that has no hardware notch.
+enum FakeNotchStyle: String, Codable, CaseIterable, Identifiable {
+    case off, notch, island
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .off: return "Off"
+        case .notch: return "Notch"
+        case .island: return "Island"
+        }
+    }
+}
+
 struct CardSetting: Codable, Equatable, Identifiable {
     var card: CardID
     var enabled: Bool
@@ -76,6 +89,7 @@ struct SettingsData: Codable, Equatable {
 
     // Appearance
     var paperGrain = true
+    var fakeNotch = FakeNotchStyle.off
 
     init() {}
 
@@ -96,6 +110,7 @@ struct SettingsData: Codable, Equatable {
         hotkeyEnabled = try c.decodeIfPresent(Bool.self, forKey: .hotkeyEnabled) ?? d.hotkeyEnabled
         paperGrain = try c.decodeIfPresent(Bool.self, forKey: .paperGrain) ?? d.paperGrain
         showMusicChip = try c.decodeIfPresent(Bool.self, forKey: .showMusicChip) ?? d.showMusicChip
+        fakeNotch = (try? c.decode(FakeNotchStyle.self, forKey: .fakeNotch)) ?? d.fakeNotch
         normalizeCards()
     }
 

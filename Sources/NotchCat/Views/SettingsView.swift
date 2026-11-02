@@ -3,7 +3,6 @@ import AppKit
 
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
-    @ObservedObject var calendar: CalendarStore
     @ObservedObject private var music = MusicService.shared
     @State private var loginError: String?
     @State private var backupMessage: String?
@@ -21,7 +20,6 @@ struct SettingsView: View {
                     timerSection
                     remindersSection
                     musicSection
-                    calendarSection
                     generalSection
                 }
             }
@@ -66,8 +64,21 @@ struct SettingsView: View {
     }
 
     private var appearanceSection: some View {
-        Section(title: "Appearance") {
+        Section(title: "Appearance",
+                footer: NotchGeometry.hasHardwareNotch ? nil
+                    : "For Macs without a notch. Notch draws a black notch at the top of the screen; Island draws a floating pill. The tray opens from it either way.") {
             toggleRow("Paper grain on cards", "circle.grid.3x3", settings.binding(\.paperGrain))
+            if !NotchGeometry.hasHardwareNotch {
+                HStack(spacing: 8) {
+                    Image(systemName: "rectangle.topthird.inset.filled").font(.system(size: 11, weight: .semibold)).frame(width: 16).opacity(0.7)
+                    Text("Fake notch").font(.system(size: 12.5, weight: .medium))
+                    Spacer()
+                    Picker("", selection: settings.binding(\.fakeNotch)) {
+                        ForEach(FakeNotchStyle.allCases) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.segmented).labelsHidden().frame(width: 160)
+                }
+            }
         }
     }
 
@@ -100,30 +111,6 @@ struct SettingsView: View {
                     pillButton("Open Settings") { music.openAutomationSettings() }
                 }
             }
-        }
-    }
-
-    private var calendarSection: some View {
-        Section(title: "Calendar", footer: "Read-only. NotchCat never creates, edits or deletes events.") {
-            HStack(spacing: 8) {
-                Image(systemName: "calendar").font(.system(size: 11, weight: .semibold)).frame(width: 16).opacity(0.7)
-                Text(calendarStatus).font(.system(size: 12.5, weight: .medium))
-                Spacer()
-                switch calendar.access {
-                case .notDetermined: pillButton("Connect") { calendar.requestAccess() }
-                case .denied: pillButton("Open Settings") { calendar.openPrivacySettings() }
-                case .authorized, .unavailable: EmptyView()
-                }
-            }
-        }
-    }
-
-    private var calendarStatus: String {
-        switch calendar.access {
-        case .authorized: return "Connected"
-        case .notDetermined: return "Not connected"
-        case .denied: return "Access denied"
-        case .unavailable: return "Needs the packaged app"
         }
     }
 

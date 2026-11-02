@@ -19,7 +19,7 @@ final class DropContainerView: NSView {
     /// The silhouette extends this far above the window so its top edge is always clipped by the
     /// window itself, never rasterized on a fractional pixel inside it.
     private static let topBleed: CGFloat = 8
-    private static let housing = NSColor(srgbRed: 0.035, green: 0.035, blue: 0.04, alpha: 1)
+    static let housing = NSColor(srgbRed: 0.035, green: 0.035, blue: 0.04, alpha: 1)
 
     /// Quick out from under the bezel, nearly critically damped: a soft ease-out with no rubber band.
     private enum Spring {

@@ -9,6 +9,7 @@ Native macOS app, SwiftUI + AppKit, SQLite storage. Local-first: your data never
 - **Notch-anchored tray.** The black shape starts as the notch itself and grows into the dashboard, then retracts straight back up. Driven by Core Animation springs that never overshoot.
 - **Workspace cards.** Tasks, Focus timer, Notepad and Events & reminders. Show or hide each one and reorder them in Settings; the tray resizes to fit.
 - **Tasks.** Quick add, completion counter, drag to reorder, Today / Tomorrow. Unfinished tasks roll over to the next day.
+  - The footer shows an estimate for the tasks that have a time limit: when you would finish if you started now, and the total, e.g. `5:41pm (1h 40m)` (local time). Tasks without a limit are ignored, and nothing shows if none have one.
   - Row menu: Focus, Mark as Done, Rename, Set Time Limit, **Remind Me**, Move to Tomorrow, Duplicate, Delete.
 - **Remind Me.** Presets (30 min, 1 hour, this evening, tomorrow morning) or a custom date and time. When it fires, the notch drops a card with the task, **zZ snooze** and **✓ Done**. If the tray is already open it appears as a banner instead.
 - **Focus timer.** Seven-segment clock, Start / Pause / Reset, and a duration popover. **Focus** on a task attaches the session to it. The timer pauses while the Mac sleeps.
@@ -20,7 +21,8 @@ Native macOS app, SwiftUI + AppKit, SQLite storage. Local-first: your data never
 - **History.** The third Insights segment lists every finished task, grouped by the day it was completed, with the time finished and the focus time spent on it. Search, page back with "Show older", or **Restore to Today** from the row menu.
 - **Now Playing (optional, off by default).** A Spotify / Apple Music card with artwork, a tint taken from the cover, scrubbable progress and previous / play-pause / next. An optional chip with the cover and equalizer bars sits on the right shoulder of the notch, ahead of the timer pill. Turn both on in Settings.
 - **Settings.** Card visibility and order, Week / Insights tabs, countdown pill, default focus length, sounds, "Time's up" card, reminders and snooze length, hover-to-open, the ⌥N shortcut, paper grain, open at login, database backup, and quit.
-- Works on Macs without a notch (the tray opens top-center), though this is less tested.
+- **Fake notch for Macs without one.** Settings → Appearance → Fake notch draws either a black **Notch** flush with the top edge or a floating **Island** pill. The tray opens from it either way, and the timer pill and album chip line up beside it. Off by default, and hidden on Macs with a real notch.
+- Works on Macs without a notch (the tray opens top-center) even with the fake notch off.
 
 ## Install
 
@@ -135,9 +137,16 @@ Pass these to `build/NotchCat.app/Contents/MacOS/NotchCat`. Set `NOTCHCAT_DB=/tm
 | `--snapshot DIR` | Render each tab, the modal and the pill to PNGs, then quit |
 | `--selftest-note`, `--selftest-settings`, `--selftest-music` | Run non-UI checks and quit |
 | `--fake-music` | Show a fake playing track (no Spotify / Music needed) |
+| `--fake-notch off\|notch\|island` | Set the fake notch style (needs `NOTCHCAT_DB`) |
+| `NOTCHCAT_FORCE_NO_NOTCH=1` (env) | Treat a notched screen as notch-less, to test the fake notch |
+| `NOTCHCAT_FAKE_OFFSET_X=-400` (env) | Shift the fake notch sideways so it is visible next to a real one |
 | `NOTCHCAT_METRIC=History` (env) | Open Insights on the Tasks / Focus / History segment |
 | `NOTCHCAT_NO_APPLESCRIPT=1` (env) | Refuse to send any AppleScript to other apps; use in tests |
 | `--log-frames` | Log window and mask geometry per frame (stderr) |
+
+## Planned
+
+Accounts and offline-first sync across Mac, iOS and Windows: see [docs/SYNC_PLAN.md](docs/SYNC_PLAN.md).
 
 ## Not built yet
 

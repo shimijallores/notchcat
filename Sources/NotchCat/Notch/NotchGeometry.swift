@@ -6,22 +6,37 @@ struct NotchGeometry {
     let hasNotch: Bool
     /// Hardware notch (or a virtual one on screens without a notch).
     let notchRect: NSRect
+    /// What actually gets drawn at the top of the screen: the hardware notch, the fake notch, or the
+    /// floating island. The timer pill and album chip line up against this.
+    let shapeRect: NSRect
+    /// The fake shape in use. Always `.off` on a screen with a hardware notch.
+    let fakeStyle: FakeNotchStyle
     /// Height of the menu bar strip.
     let menuBarHeight: CGFloat
 
     /// The screen that has the notch, otherwise the primary screen.
-    static func current() -> NotchGeometry {
+    static func current(fake: FakeNotchStyle = .off) -> NotchGeometry {
         let screen = NSScreen.screens.first { $0.safeAreaInsets.top > 0 }
             ?? NSScreen.screens.first
             ?? NSScreen.main!
-        return NotchGeometry(screen: screen)
+        return NotchGeometry(screen: screen, fake: fake)
     }
 
-    init(screen: NSScreen) {
+    /// Developer: NOTCHCAT_FORCE_NO_NOTCH=1 treats a notched screen as if it had none, to test the fake notch.
+    private static let forceNoNotch = ProcessInfo.processInfo.environment["NOTCHCAT_FORCE_NO_NOTCH"] != nil
+
+    /// True when any connected screen has a real notch (so the fake one is never needed).
+    static var hasHardwareNotch: Bool { !forceNoNotch && NSScreen.screens.contains { $0.safeAreaInsets.top > 0 } }
+
+    /// Island size: a floating capsule inside the menu bar, with a small gap above and below.
+    private static let islandWidth: CGFloat = 116
+    private static let islandTopGap: CGFloat = 3
+
+    init(screen: NSScreen, fake: FakeNotchStyle = .off) {
         self.screen = screen
         let frame = screen.frame
         let inset = screen.safeAreaInsets.top
-        hasNotch = inset > 0
+        hasNotch = inset > 0 && !Self.forceNoNotch
 
         if hasNotch,
            let left = screen.auxiliaryTopLeftArea,
@@ -30,6 +45,8 @@ struct NotchGeometry {
             menuBarHeight = inset
             notchRect = NSRect(x: frame.minX + left.width, y: frame.maxY - inset,
                                width: width, height: inset)
+            shapeRect = notchRect
+            fakeStyle = .off
         } else {
             // No notch: pretend there is a small one at top center, below the menu bar.
             let bar = max(24, frame.maxY - screen.visibleFrame.maxY)
@@ -37,7 +54,24 @@ struct NotchGeometry {
             let width: CGFloat = 180
             notchRect = NSRect(x: frame.midX - width / 2, y: frame.maxY - bar,
                                width: width, height: bar)
+            fakeStyle = fake
+            if fake == .island {
+                let h = max(18, bar - Self.islandTopGap * 2)
+                let w = Self.islandWidth
+                shapeRect = NSRect(x: (frame.midX - w / 2).rounded(), y: frame.maxY - Self.islandTopGap - h,
+                                   width: w, height: h)
+            } else {
+                shapeRect = notchRect
+            }
         }
+    }
+
+    /// Where the fake notch / island window goes, on whole points so the top edge is crisp.
+    var fakeNotchFrame: NSRect {
+        let r = shapeRect
+        let w = (r.width / 2).rounded() * 2
+        let h = r.height.rounded()
+        return NSRect(x: (r.midX - w / 2).rounded(), y: (r.maxY - h).rounded(), width: w, height: h)
     }
 
     /// The area where hovering opens the panel.
@@ -82,6 +116,6 @@ struct NotchGeometry {
     /// Right shoulder of the notch, inline with the menu bar.
     func pillOrigin(width: CGFloat) -> NSPoint {
         let y = notchRect.maxY - menuBarHeight + (menuBarHeight - pillHeight) / 2
-        return NSPoint(x: notchRect.maxX + 8, y: y)
+        return NSPoint(x: shapeRect.maxX + 8, y: y)
     }
 }

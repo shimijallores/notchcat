@@ -62,6 +62,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             FocusTimer.shared.start(minutes: 25)
             controller.writeSnapshots(to: URL(fileURLWithPath: args[i + 1])) { NSApp.terminate(nil) }
         }
+        // Test-only: pick the fake notch style. Refuses to touch the real database.
+        if let i = args.firstIndex(of: "--fake-notch"), i + 1 < args.count,
+           let style = FakeNotchStyle(rawValue: args[i + 1]),
+           ProcessInfo.processInfo.environment["NOTCHCAT_DB"] != nil {
+            AppSettings.shared.data.fakeNotch = style
+        }
         if let i = args.firstIndex(of: "--tab"), i + 1 < args.count,
            let tab = PanelTab.allCases.first(where: { $0.rawValue.lowercased() == args[i + 1] }) {
             controller.ui.tab = tab

@@ -52,7 +52,7 @@ struct RootView: View {
         case .workspace: WorkspaceView(ui: ui, store: store, timer: timer, settings: settings)
         case .week: WeekView(store: store, ui: ui)
         case .insights: InsightsView(store: store)
-        case .settings: SettingsView(settings: settings, calendar: CalendarStore.shared)
+        case .settings: SettingsView(settings: settings)
         }
     }
 }
