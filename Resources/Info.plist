@@ -28,6 +28,8 @@
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>NotchCat uses this to show what is playing in Spotify and Music, and to play, pause and skip tracks.</string>
     <key>NSCalendarsFullAccessUsageDescription</key>
     <string>NotchCat shows today's events in its Events card. It only reads events and never creates, edits or deletes them.</string>
     <key>NSCalendarsUsageDescription</key>

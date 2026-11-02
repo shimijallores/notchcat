@@ -4,6 +4,7 @@ import AppKit
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var calendar: CalendarStore
+    @ObservedObject private var music = MusicService.shared
     @State private var loginError: String?
     @State private var backupMessage: String?
 
@@ -19,6 +20,7 @@ struct SettingsView: View {
                 VStack(spacing: 10) {
                     timerSection
                     remindersSection
+                    musicSection
                     calendarSection
                     generalSection
                 }
@@ -83,6 +85,21 @@ struct SettingsView: View {
             toggleRow("Remind me from the notch", "bell", settings.binding(\.remindersEnabled))
             toggleRow("Show reminders in Events", "list.bullet", settings.binding(\.showRemindersInEvents))
             stepperRow("Snooze for", "zzz", value: settings.binding(\.snoozeMinutes), range: 1...60, step: 1, unit: "min")
+        }
+    }
+
+    private var musicSection: some View {
+        Section(title: "Music",
+                footer: "Works with Spotify and Apple Music. Turn on the Now playing card above. macOS asks permission the first time NotchCat controls a player.") {
+            toggleRow("Album art beside the notch while playing", "music.note", settings.binding(\.showMusicChip))
+            if music.automationDenied {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 11)).foregroundStyle(Theme.amber)
+                    Text("Control is blocked").font(.system(size: 12.5, weight: .medium))
+                    Spacer()
+                    pillButton("Open Settings") { music.openAutomationSettings() }
+                }
+            }
         }
     }
 

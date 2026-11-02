@@ -4,13 +4,15 @@ import SwiftUI
 struct InsightsView: View {
     @ObservedObject var store: TaskStore
     @StateObject private var model = InsightsModel()
+    @StateObject private var history = HistoryModel()
 
     enum Metric: String, CaseIterable, Identifiable {
-        case tasks = "Tasks", focus = "Focus"
+        case tasks = "Tasks", focus = "Focus", history = "History"
         var id: String { rawValue }
     }
 
-    @State private var metric: Metric = .tasks
+    // NOTCHCAT_METRIC is a test-only way to open on a segment without clicking.
+    @State private var metric: Metric = Metric(rawValue: ProcessInfo.processInfo.environment["NOTCHCAT_METRIC"] ?? "") ?? .tasks
     @State private var selected: Date?
 
     var body: some View {
@@ -19,8 +21,8 @@ struct InsightsView: View {
                 .frame(width: 270)
             chartCard
         }
-        .onAppear { model.reload() }
-        .onReceive(store.$tasks) { _ in model.reload() }
+        .onAppear { model.reload(); history.reload() }
+        .onReceive(store.$tasks) { _ in model.reload(); history.reload() }
     }
 
     // MARK: - Left: summary
@@ -99,22 +101,31 @@ struct InsightsView: View {
 
                 Spacer()
 
-                HStack(spacing: 6) {
-                    weekButton("chevron.left") { model.weekOffset -= 1; selected = nil }
-                    Text(rangeLabel)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .monospacedDigit()
-                    weekButton("chevron.right", disabled: model.weekOffset == 0) { model.weekOffset += 1; selected = nil }
+                if metric == .history {
+                    HistorySearchField(text: $history.search)
+                } else {
+                    HStack(spacing: 6) {
+                        weekButton("chevron.left") { model.weekOffset -= 1; selected = nil }
+                        Text(rangeLabel)
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .monospacedDigit()
+                        weekButton("chevron.right", disabled: model.weekOffset == 0) { model.weekOffset += 1; selected = nil }
+                    }
                 }
             }
 
-            InsightsChart(days: days, metric: metric, selected: $selected)
-                .frame(maxHeight: .infinity)
+            if metric == .history {
+                HistoryList(model: history, store: store)
+                    .frame(maxHeight: .infinity)
+            } else {
+                InsightsChart(days: days, metric: metric, selected: $selected)
+                    .frame(maxHeight: .infinity)
 
-            Text(detailText)
-                .font(.system(size: 11.5, weight: .medium))
-                .opacity(selected == nil ? 0.5 : 0.85)
-                .frame(maxWidth: .infinity, alignment: .center)
+                Text(detailText)
+                    .font(.system(size: 11.5, weight: .medium))
+                    .opacity(selected == nil ? 0.5 : 0.85)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
         }
         .padding(14)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -146,6 +157,7 @@ struct InsightsView: View {
         switch metric {
         case .tasks: return "\(day): \(d.completed) done of \(d.planned) planned"
         case .focus: return "\(day): \(InsightsModel.duration(d.focusSeconds)) focused"
+        case .history: return ""
         }
     }
 }
@@ -164,7 +176,7 @@ private struct InsightsChart: View {
     private func values(_ d: InsightsModel.Day) -> (dark: Double, total: Double) {
         switch metric {
         case .tasks: return (Double(d.completed), Double(max(d.planned, d.completed)))
-        case .focus:
+        case .focus, .history:
             let m = Double(d.focusSeconds) / 60
             return (m, m)
         }
@@ -175,7 +187,7 @@ private struct InsightsChart: View {
         switch metric {
         case .tasks:
             return peak <= 4 ? 4 : (ceil(peak / 4) * 4)
-        case .focus:
+        case .focus, .history:
             return peak <= 60 ? 60 : (ceil(peak / 60) * 60)
         }
     }
@@ -183,7 +195,7 @@ private struct InsightsChart: View {
     private func axisLabel(_ v: Double) -> String {
         switch metric {
         case .tasks: return "\(Int(v))"
-        case .focus:
+        case .focus, .history:
             if v == 0 { return "0" }
             let m = Int(v)
             return m % 60 == 0 ? "\(m / 60)h" : "\(m)m"

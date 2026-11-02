@@ -17,11 +17,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--seed-demo") { DemoData.seed(into: .shared) }
         if CommandLine.arguments.contains("--selftest-note") { SelfTest.noteConversion(); exit(0) }
         if CommandLine.arguments.contains("--selftest-settings") { SelfTest.settings(); exit(0) }
+        if CommandLine.arguments.contains("--fake-music") { DispatchQueue.main.async { SelfTest.fakeMusic() } }
+        // Run after launch completes, so the settings sink below has already made its first (off) decision.
+        if CommandLine.arguments.contains("--selftest-music") { DispatchQueue.main.async { SelfTest.music() } }
         let timer = FocusTimer.shared
         let sessions = SessionRepository(db: .shared)
         timer.sessionLogger = { sessions.insert($0) }
 
         controller = NotchController()
+
+        // Music: only listen (and ever talk to Spotify / Music) while the card or chip is switched on.
+        // (@Published fires before the value changes, so compute from the value it hands us.)
+        AppSettings.shared.$data
+            .map { data in (data.cards.first { $0.card == .music }?.enabled ?? false) || data.showMusicChip }
+            .removeDuplicates()
+            .sink { MusicService.shared.setActive($0) }
+            .store(in: &cancellables)
 
         // Option-N toggles the panel from anywhere (can be switched off in Settings).
         AppSettings.shared.$data.map(\.hotkeyEnabled).removeDuplicates()

@@ -77,6 +77,16 @@ final class TaskStore: ObservableObject {
         }
     }
 
+    /// Brings a finished task back onto today's list.
+    func restore(_ id: UUID) {
+        let today = self.today
+        update(id) {
+            $0.isDone = false
+            $0.completedAt = nil
+            $0.day = today
+        }
+    }
+
     func rename(_ id: UUID, to title: String) {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }

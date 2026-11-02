@@ -15,8 +15,9 @@ enum DemoData {
         let tasks = TaskRepository(db: db)
         let sessions = SessionRepository(db: db)
         var position = 0
+        @discardableResult
         func add(_ title: String, _ offset: Int, done: Bool = false, limit: Int? = nil,
-                 remind: Date? = nil, planned: Int? = nil, completedHour: Int = 14) {
+                 remind: Date? = nil, planned: Int? = nil, completedHour: Int = 14) -> UUID {
             var t = TaskItem(title: title, day: day(offset), timeLimitMinutes: limit)
             t.plannedDay = day(planned ?? offset)
             t.isDone = done
@@ -25,18 +26,23 @@ enum DemoData {
             t.createdAt = day(min(offset, 0)).addingTimeInterval(-3600)
             tasks.upsert(t, position: position)
             position += 1
+            return t.id
         }
+        let titles = ["Review pull request", "Write release notes", "Reply to emails", "Plan the sprint", "Fix login bug",
+                      "Update the docs", "Design landing page", "Call the dentist", "Buy groceries", "Refactor storage layer"]
 
         // The last fortnight: a varied number planned and completed each day.
         let history: [(Int, Int)] = [(-13, 3), (-12, 4), (-11, 2), (-10, 5), (-9, 3), (-8, 1), (-7, 4),
                                      (-6, 3), (-5, 5), (-4, 6), (-3, 4), (-2, 6), (-1, 7)]
         for (offset, count) in history {
+            var firstDone: UUID?
             for i in 0..<count {
                 let doneIt = i < count - (offset % 3 == 0 ? 1 : 0)
-                add("Past task \(i + 1)", offset, done: doneIt, completedHour: 9 + i)
+                let id = add(titles[(i + abs(offset)) % titles.count], offset, done: doneIt, completedHour: 9 + i)
+                if doneIt, firstDone == nil { firstDone = id }
             }
             let minutes = [25, 50, 75, 100, 45, 125, 25, 90, 60, 150, 35, 105, 80][history.firstIndex { $0.0 == offset }!]
-            sessions.insert(FocusSession(taskID: nil, startedAt: day(offset).addingTimeInterval(10 * 3600),
+            sessions.insert(FocusSession(taskID: firstDone, startedAt: day(offset).addingTimeInterval(10 * 3600),
                                          activeSeconds: minutes * 60, plannedSeconds: minutes * 60, completed: true))
         }
 
@@ -118,5 +124,75 @@ enum SelfTest {
         _ = try? db.run("UPDATE settings SET value = 'not json at all' WHERE key = 'app'")
         let d = AppSettings(db: db)
         print("corrupt row:      falls back to defaults -> visible=\(d.visibleCards.map(\.rawValue)) focus=\(d.data.defaultFocusMinutes)")
+    }
+
+    static func music() {
+        guard ProcessInfo.processInfo.environment["NOTCHCAT_DB"] != nil else { return }
+        let m = MusicService.shared
+        m.setActive(true)
+
+        func post(_ name: String, _ info: [String: Any]) {
+            DistributedNotificationCenter.default().postNotificationName(NSNotification.Name(name), object: nil,
+                                                                         userInfo: info, deliverImmediately: true)
+        }
+        func show(_ label: String) {
+            if let np = m.nowPlaying {
+                print("\(label): \(np.source.displayName) | \(np.title) - \(np.artist) | playing=\(np.isPlaying) | dur=\(Int(np.duration))s pos=\(String(format: "%.1f", np.position()))s")
+            } else {
+                print("\(label): nothing")
+            }
+        }
+        let spotify = "com.spotify.client.PlaybackStateChanged", music = "com.apple.Music.playerInfo"
+        let steps: [(Double, () -> Void)] = [
+            (0.0, { post(spotify, ["Player State": "Playing", "Name": "Blinding Lights", "Artist": "The Weeknd",
+                                    "Album": "After Hours", "Duration": 200040, "Playback Position": 42.5]) }),
+            (0.3, { show("1 spotify playing  ") }),
+            (1.3, { show("2 +1s later        ") }),
+            (1.4, { post(music, ["Player State": "Playing", "Name": "Heat Waves", "Artist": "Glass Animals",
+                                  "Album": "Dreamland", "Total Time": 238000]) }),
+            (1.7, { show("3 music started    ") }),
+            (1.8, { post(music, ["Player State": "Paused", "Name": "Heat Waves", "Artist": "Glass Animals",
+                                  "Album": "Dreamland", "Total Time": 238000]) }),
+            (2.1, { show("4 music paused     ") }),
+            (2.2, { post(spotify, ["Player State": "Stopped"]) }),
+            (2.5, { show("5 spotify stopped  ") }),
+            (2.6, { post(music, ["Player State": "Stopped"]) }),
+            (2.9, { show("6 all stopped      ") }),
+            (3.0, { post(spotify, ["Player State": "Playing", "Name": "", "Artist": "x"]) }),
+            (3.3, { show("7 empty name ignored") }),
+            (3.4, { m.runPlainScript("return \"script queue ok: \" & ((1 + 1) as text)") { print($0) } }),
+        ]
+        for (t, f) in steps { DispatchQueue.main.asyncAfter(deadline: .now() + t) { f() } }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { exit(0) }
+    }
+
+    /// Visual check: card + chip on, a fake "Playing" notification, and a generated cover image.
+    static func fakeMusic() {
+        guard ProcessInfo.processInfo.environment["NOTCHCAT_DB"] != nil else { return }
+        let settings = AppSettings.shared
+        settings.setEnabled(.music, true)
+        settings.data.showMusicChip = true
+        // Put the card first so it's easy to see.
+        while settings.data.cards.first?.card != .music { settings.moveCard(.music, by: -1) }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            DistributedNotificationCenter.default().postNotificationName(
+                NSNotification.Name("com.spotify.client.PlaybackStateChanged"), object: nil,
+                userInfo: ["Player State": "Playing", "Name": "Blinding Lights", "Artist": "The Weeknd",
+                           "Album": "After Hours", "Duration": 200040, "Playback Position": 77.0],
+                deliverImmediately: true)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+            let size = NSSize(width: 300, height: 300)
+            let cover = NSImage(size: size)
+            cover.lockFocus()
+            NSGradient(colors: [NSColor(calibratedRed: 0.85, green: 0.1, blue: 0.2, alpha: 1),
+                                NSColor(calibratedRed: 0.15, green: 0.05, blue: 0.3, alpha: 1)])?
+                .draw(in: NSRect(origin: .zero, size: size), angle: 60)
+            cover.unlockFocus()
+            if let key = MusicService.shared.nowPlaying?.trackKey {
+                MusicService.shared.setArtwork(cover, forKey: key)
+            }
+        }
     }
 }

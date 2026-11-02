@@ -47,3 +47,14 @@ struct FocusSession {
     var plannedSeconds: Int
     var completed: Bool
 }
+
+/// A row in the Insights history list.
+struct FinishedTask: Identifiable, Equatable {
+    let id: UUID
+    let title: String
+    let completedAt: Date
+    let plannedDay: Date
+    let timeLimitMinutes: Int?
+    /// Total focus time recorded against this task.
+    let focusSeconds: Int
+}

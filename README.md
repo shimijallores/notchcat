@@ -17,6 +17,8 @@ Native macOS app, SwiftUI + AppKit, SQLite storage. Local-first: your data never
 - **Events.** Today's Apple Calendar events (read-only) merged with your timed reminders, with "Happening now". Calendar access is optional and only requested when you press Connect.
 - **Week.** The next seven days as columns. Drag a task onto any day to re-plan it, or add one in place.
 - **Insights.** "Momentum is building" summary, tasks completed vs planned, focus time, and a 7-day stacked bar chart (Tasks / Focus toggle, step back through earlier weeks, tap a bar for details).
+- **History.** The third Insights segment lists every finished task, grouped by the day it was completed, with the time finished and the focus time spent on it. Search, page back with "Show older", or **Restore to Today** from the row menu.
+- **Now Playing (optional, off by default).** A Spotify / Apple Music card with artwork, a tint taken from the cover, scrubbable progress and previous / play-pause / next. An optional chip with the cover and equalizer bars sits on the right shoulder of the notch, ahead of the timer pill. Turn both on in Settings.
 - **Settings.** Card visibility and order, Week / Insights tabs, countdown pill, default focus length, sounds, "Time's up" card, reminders and snooze length, hover-to-open, the ⌥N shortcut, paper grain, open at login, database backup, and quit.
 - Works on Macs without a notch (the tray opens top-center), though this is less tested.
 
@@ -63,7 +65,9 @@ The app has no Dock icon. Look for the cat in the menu bar. On first launch from
 ./scripts/make-dmg.sh   # produces build/NotchCat.dmg
 ```
 
-Pushing a `v*` tag builds the DMG on a macOS runner and attaches it to a GitHub Release (see `.github/workflows/release.yml`). The build is unsigned either way.
+## Now Playing and privacy
+
+Playback state (track, artist, play / pause) arrives through the distributed notifications Spotify and Music already post, which need no permission. Nothing is sent to either app until you enable Now Playing in Settings. After that, the first time you press play / pause, skip, or scrub, or the first time artwork is fetched, macOS asks for **Automation** permission for that app. NotchCat never launches a player to query it, and does not use the private MediaRemote API.
 
 ## Using it
 
@@ -102,13 +106,13 @@ Sources/NotchCat/
   App/      main.swift, AppDelegate (hotkey, menu-bar item, dev flags)
   Data/     Database (SQLite wrapper + migrations), Repositories, DemoData (dev only)
   Models/   TaskStore, NoteStore, FocusTimer, AppSettings, ReminderScheduler,
-            CalendarStore (EventKit), InsightsModel
+            CalendarStore (EventKit), InsightsModel, HistoryModel, MusicService
   Notch/    NotchController (hover / click-away / islands / sizing), NotchGeometry,
             NotchPanels, DropContainerView (Core Animation silhouette), HotKey
   Views/    RootView (tabs, workspace, banner, modals), TasksCard, TimerCard, NotepadCard,
-            EventsCard, WeekView, InsightsView, SettingsView, IslandView,
+            EventsCard, MusicCard, WeekView, InsightsView, HistoryView, SettingsView, IslandView,
             FocusDurationModal, DotMatrix (pill), SevenSegment, Theme
-Resources/  Info.plist (menu-bar agent, calendar usage text)
+Resources/  Info.plist (menu-bar agent, calendar and Automation usage text)
 brand/      zi-mascot.png
 scripts/    build-app.sh, make-icon.swift
 REFERENCE.md  design/behaviour spec this app was built from
@@ -129,7 +133,10 @@ Pass these to `build/NotchCat.app/Contents/MacOS/NotchCat`. Set `NOTCHCAT_DB=/tm
 | `--seed-demo` | Fill the test database with two weeks of sample history |
 | `--remind-in S` | Add a task with a reminder S seconds out |
 | `--snapshot DIR` | Render each tab, the modal and the pill to PNGs, then quit |
-| `--selftest-note`, `--selftest-settings` | Run non-UI checks and quit |
+| `--selftest-note`, `--selftest-settings`, `--selftest-music` | Run non-UI checks and quit |
+| `--fake-music` | Show a fake playing track (no Spotify / Music needed) |
+| `NOTCHCAT_METRIC=History` (env) | Open Insights on the Tasks / Focus / History segment |
+| `NOTCHCAT_NO_APPLESCRIPT=1` (env) | Refuse to send any AppleScript to other apps; use in tests |
 | `--log-frames` | Log window and mask geometry per frame (stderr) |
 
 ## Not built yet

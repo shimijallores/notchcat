@@ -57,6 +57,38 @@ struct TaskRepository {
 
     func count() -> Int { (try? db.scalarInt("SELECT COUNT(*) FROM tasks")) ?? 0 }
 
+    // MARK: History
+
+    /// Escapes a user search string for use inside a LIKE pattern.
+    private func likePattern(_ search: String) -> String {
+        let escaped = search
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "%", with: "\\%")
+            .replacingOccurrences(of: "_", with: "\\_")
+        return "%\(escaped)%"
+    }
+
+    /// Finished tasks, newest first, with the focus time that was spent on each.
+    func finished(search: String, limit: Int, offset: Int = 0) -> [FinishedTask] {
+        let sql = """
+        SELECT t.id, t.title, t.completed_at, t.planned_day, t.time_limit_minutes,
+               COALESCE((SELECT SUM(s.active_seconds) FROM focus_sessions s WHERE s.task_id = t.id), 0)
+        FROM tasks t
+        WHERE t.is_done = 1 AND t.completed_at IS NOT NULL AND t.title LIKE ? ESCAPE '\\'
+        ORDER BY t.completed_at DESC
+        LIMIT ? OFFSET ?
+        """
+        return (try? db.query(sql, [.text(likePattern(search)), .int(Int64(limit)), .int(Int64(offset))]) { r in
+            FinishedTask(id: UUID(uuidString: r.text(0)) ?? UUID(), title: r.text(1), completedAt: r.date(2),
+                         plannedDay: r.date(3), timeLimitMinutes: r.optionalInt(4), focusSeconds: r.int(5))
+        }) ?? []
+    }
+
+    func finishedCount(search: String) -> Int {
+        (try? db.scalarInt("SELECT COUNT(*) FROM tasks WHERE is_done = 1 AND completed_at IS NOT NULL AND title LIKE ? ESCAPE '\\'",
+                           [.text(likePattern(search))])) ?? 0
+    }
+
     private func log(_ result: Int?, _ what: String) {
         if result == nil { NSLog("NotchCat: failed to \(what)") }
     }

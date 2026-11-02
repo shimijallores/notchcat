@@ -89,6 +89,7 @@ struct WorkspaceView: View {
         case .timer: TimerCard(ui: ui, store: store, timer: timer, width: width)
         case .notepad: NotepadCard(notes: NoteStore.shared, store: store)
         case .events: EventsCard(calendar: CalendarStore.shared, store: store, settings: settings)
+        case .music: MusicCard(music: MusicService.shared)
         }
     }
 }

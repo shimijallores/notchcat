@@ -55,6 +55,7 @@ final class NotchController {
     private let panel: FloatingPanel
     private let container: DropContainerView
     private let pill: PillPanel
+    private let chip: PillPanel
 
     private var pinned = false
     private var hoverArmed = true
@@ -67,6 +68,10 @@ final class NotchController {
 
     private let pillUI = PillUIState()
     private var pillGeneration = 0
+    private let chipUI = PillUIState()
+    private var chipGeneration = 0
+    /// Whether the album-art chip is (or is about to be) on screen, which moves the timer pill over.
+    private var chipWanted = false
 
     private let settings = AppSettings.shared
     private var reminders: ReminderScheduler?
@@ -76,6 +81,7 @@ final class NotchController {
     init() {
         panel = FloatingPanel(contentRect: geometry.panelFrame)
         pill = PillPanel(contentRect: NSRect(x: 0, y: 0, width: 100, height: 24))
+        chip = PillPanel(contentRect: NSRect(x: 0, y: 0, width: 60, height: 24))
 
         // All stored properties must exist before any closure captures `self`.
         let root = RootView(ui: ui, store: store, timer: timer)
@@ -94,9 +100,18 @@ final class NotchController {
         pillHost.sizingOptions = []
         pill.contentView = pillHost
 
+        let chipView = MusicChipView(music: MusicService.shared, ui: chipUI,
+                                     height: { [weak self] in self?.geometry.pillHeight ?? 24 }) { [weak self] in
+            self?.show(pinned: true)
+        }
+        let chipHost = FirstMouseHostingView(rootView: chipView)
+        chipHost.sizingOptions = []
+        chip.contentView = chipHost
+
         applyGeometry()
         installMonitors()
         bindPill()
+        bindChip()
         prewarm()
 
         // When a session ends, the notch stretches into a compact "Time's up" island.
@@ -350,11 +365,26 @@ final class NotchController {
         layoutPill()
     }
 
-    private func layoutPill() {
+    private func layoutPill(animated: Bool = false) {
         let h = geometry.pillHeight
         let w = PillMetrics.width(for: timer.remaining.clockString, height: h)
-        let origin = geometry.pillOrigin(width: w)
-        pill.setFrame(NSRect(origin: origin, size: NSSize(width: w, height: h)), display: true)
+        var origin = geometry.pillOrigin(width: w)
+
+        // The album-art chip takes the spot next to the notch; the timer pill slides over.
+        let chipWidth = MusicChipView.width(height: h)
+        chip.setFrame(NSRect(x: origin.x, y: origin.y, width: chipWidth, height: h), display: true)
+        if chipWanted { origin.x += chipWidth + 6 }
+
+        let frame = NSRect(origin: origin, size: NSSize(width: w, height: h))
+        if animated, pill.isVisible {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.25
+                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1)
+                pill.animator().setFrame(frame, display: true)
+            }
+        } else {
+            pill.setFrame(frame, display: true)
+        }
     }
 
     // MARK: - Pill visibility
@@ -388,6 +418,41 @@ final class NotchController {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { [weak self] in
                         guard let self, gen == self.pillGeneration else { return }
                         self.pill.orderOut(nil)
+                    }
+                }
+            }
+            .store(in: &cancellables)
+    }
+
+    // MARK: - Music chip
+
+    private func bindChip() {
+        let music = MusicService.shared
+        let playing = music.$nowPlaying.map { $0?.isPlaying ?? false }.removeDuplicates()
+        let enabled = settings.$data.map(\.showMusicChip).removeDuplicates()
+        Publishers.CombineLatest3(playing, ui.$expanded, enabled)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] playing, expanded, enabled in
+                guard let self else { return }
+                let shouldShow = playing && !expanded && enabled
+                guard shouldShow != self.chipWanted || (shouldShow && !self.chip.isVisible) else { return }
+                self.chipWanted = shouldShow
+                self.chipGeneration += 1
+                let gen = self.chipGeneration
+                if shouldShow {
+                    self.layoutPill(animated: true)
+                    self.chipUI.shown = false
+                    self.chip.orderFrontRegardless()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+                        guard let self, gen == self.chipGeneration else { return }
+                        self.chipUI.shown = true
+                    }
+                } else {
+                    self.chipUI.shown = false
+                    self.layoutPill(animated: true)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { [weak self] in
+                        guard let self, gen == self.chipGeneration else { return }
+                        self.chip.orderOut(nil)
                     }
                 }
             }

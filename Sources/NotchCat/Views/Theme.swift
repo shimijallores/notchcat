@@ -11,6 +11,7 @@ enum Theme {
     static let lavender = Color(red: 0.800, green: 0.775, blue: 0.930)
     static let sand = Color(red: 0.850, green: 0.820, blue: 0.610)
     static let slate = Color(red: 0.640, green: 0.710, blue: 0.800)
+    static let rose = Color(red: 0.930, green: 0.775, blue: 0.800)
 
     // Ink on pastels, and the accent taken from the mascot's golden eye
     static let ink = Color(red: 0.105, green: 0.115, blue: 0.110)
