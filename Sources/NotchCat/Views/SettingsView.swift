@@ -43,7 +43,7 @@ struct SettingsView: View {
                     arrow("chevron.up", disabled: index == 0) { settings.moveCard(item.card, by: -1) }
                     arrow("chevron.down", disabled: index == settings.data.cards.count - 1) { settings.moveCard(item.card, by: 1) }
                     Toggle("", isOn: Binding(get: { item.enabled }, set: { settings.setEnabled(item.card, $0) }))
-                        .labelsHidden().toggleStyle(.switch).controlSize(.mini).tint(Theme.amber)
+                        .labelsHidden().toggleStyle(AmberSwitch())
                 }
             }
         }
@@ -100,8 +100,7 @@ struct SettingsView: View {
     }
 
     private var musicSection: some View {
-        Section(title: "Music",
-                footer: "Works with Spotify and Apple Music. Turn on the Now playing card above. macOS asks permission the first time NotchCat controls a player.") {
+        Section(title: "Music", footer: "Turn on the Now playing card above.") {
             toggleRow("Album art beside the notch while playing", "music.note", settings.binding(\.showMusicChip))
             if music.automationDenied {
                 HStack(spacing: 8) {
@@ -155,7 +154,7 @@ struct SettingsView: View {
             Image(systemName: icon).font(.system(size: 11, weight: .semibold)).frame(width: 16).opacity(0.7)
             Text(title).font(.system(size: 12.5, weight: .medium)).lineLimit(1)
             Spacer()
-            Toggle("", isOn: binding).labelsHidden().toggleStyle(.switch).controlSize(.mini).tint(Theme.amber)
+            Toggle("", isOn: binding).labelsHidden().toggleStyle(AmberSwitch())
         }
     }
 
@@ -211,6 +210,30 @@ struct SettingsView: View {
                 .foregroundStyle(Theme.ink)
                 .padding(.horizontal, 11).padding(.vertical, 4)
                 .background(Capsule().fill(Theme.amber))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// A switch that is always amber when on, regardless of the system accent color
+/// (the stock `.switch` style falls back to the accent and can show up gray).
+struct AmberSwitch: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button {
+            configuration.isOn.toggle()
+        } label: {
+            ZStack {
+                Capsule()
+                    .fill(configuration.isOn ? Theme.amber : Color.white.opacity(0.18))
+                Circle()
+                    .fill(.white)
+                    .shadow(color: .black.opacity(0.25), radius: 0.5, y: 0.5)
+                    .padding(1.5)
+                    .frame(width: 15, height: 15)
+                    .offset(x: configuration.isOn ? 6 : -6)
+            }
+            .frame(width: 30, height: 18)
+            .animation(.spring(response: 0.22, dampingFraction: 0.7), value: configuration.isOn)
         }
         .buttonStyle(.plain)
     }
