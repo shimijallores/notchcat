@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-/// Daily scratchpad. ⌘↵ turns the line under the cursor into a task.
+/// Long-lived scratchpad for ideas; it is never reset. ⌘↵ turns the line under the cursor into a task.
 struct NotepadCard: View {
     @ObservedObject var notes: NoteStore
     @ObservedObject var store: TaskStore
@@ -13,9 +13,6 @@ struct NotepadCard: View {
                 Image(systemName: "note.text").font(.system(size: 11, weight: .semibold))
                 Text("Notepad").font(.system(size: 12, weight: .semibold, design: .rounded))
                 Spacer(minLength: 0)
-                Text(notes.currentDay, format: .dateTime.day().month(.abbreviated).year())
-                    .font(.system(size: 11, weight: .medium))
-                    .opacity(0.6)
             }
             .opacity(0.8)
 
@@ -52,7 +49,6 @@ struct NotepadCard: View {
         .padding(14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .card(Theme.sand)
-        .onReceive(store.$dayStamp) { _ in notes.rollOverIfNeeded() }
     }
 }
 

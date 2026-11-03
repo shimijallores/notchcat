@@ -131,19 +131,27 @@ struct SessionRepository {
 struct NoteRepository {
     let db: Database
 
-    func body(for day: Date) -> String {
-        (try? db.query("SELECT body FROM notes WHERE day = ?", [SQLValue(day)]) { $0.text(0) })?.first ?? ""
+    /// The one long-lived note is stored under 1970-01-01. The old per-day notes (real dates) are kept as is.
+    private static let mainKey = Date(timeIntervalSince1970: 0)
+
+    /// The saved note, or nil if it has never been saved (a cleared note is saved as empty, not removed,
+    /// so the old daily notes are only ever imported once).
+    func loadMain() -> String? {
+        (try? db.query("SELECT body FROM notes WHERE day = ?", [SQLValue(Self.mainKey)]) { $0.text(0) })?.first
     }
 
-    func save(_ body: String, for day: Date) {
-        if body.isEmpty {
-            _ = try? db.run("DELETE FROM notes WHERE day = ?", [SQLValue(day)])
-        } else {
-            _ = try? db.run("""
-                INSERT INTO notes (day, body, updated_at) VALUES (?, ?, ?)
-                ON CONFLICT(day) DO UPDATE SET body = excluded.body, updated_at = excluded.updated_at
-                """, [SQLValue(day), .text(body), SQLValue(Date())])
-        }
+    func saveMain(_ body: String) {
+        _ = try? db.run("""
+            INSERT INTO notes (day, body, updated_at) VALUES (?, ?, ?)
+            ON CONFLICT(day) DO UPDATE SET body = excluded.body, updated_at = excluded.updated_at
+            """, [SQLValue(Self.mainKey), .text(body), SQLValue(Date())])
+    }
+
+    /// Notes written back when the notepad was one-per-day, oldest first.
+    func legacyDailyNotes() -> [(day: Date, body: String)] {
+        let rows = try? db.query("SELECT day, body FROM notes WHERE day != ? ORDER BY day ASC",
+                                 [SQLValue(Self.mainKey)]) { ($0.date(0), $0.text(1)) }
+        return (rows ?? []).filter { !$0.1.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 }
 

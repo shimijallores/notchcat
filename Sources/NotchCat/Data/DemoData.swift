@@ -59,7 +59,7 @@ enum DemoData {
         add("Pay rent", 5)
         add("Team lunch", 6)
 
-        NoteRepository(db: db).save("Ideas for the demo\n- ship v2\n- record a walkthrough\nCall the plumber", for: today)
+        NoteRepository(db: db).saveMain("Ideas for the demo\n- ship v2\n- record a walkthrough\nCall the plumber")
     }
 }
 
