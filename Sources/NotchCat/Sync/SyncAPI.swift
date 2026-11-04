@@ -25,6 +25,12 @@ struct SyncAPI {
 
     // MARK: Auth
 
+    /// Whether an access key can still be used to sign up. Throws a 403 `APIError` if not. Does not use the key up.
+    func checkKey(_ accessKey: String) async throws {
+        struct KeyCheck: Decodable { let valid: Bool }
+        let _: KeyCheck = try await send("POST", "/v1/auth/check-key", body: ["access_key": accessKey])
+    }
+
     func signUp(accessKey: String, username: String, password: String, device: String) async throws -> TokenPair {
         try await send("POST", "/v1/auth/signup",
                        body: ["access_key": accessKey, "username": username, "password": password, "device_name": device])

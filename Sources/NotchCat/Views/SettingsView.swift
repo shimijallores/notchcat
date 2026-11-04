@@ -12,7 +12,7 @@ struct SettingsView: View {
         ScrollView(showsIndicators: false) {
             HStack(alignment: .top, spacing: 10) {
                 VStack(spacing: 10) {
-                    cardsSection
+                    accountSection
                     tabsSection
                     openingSection
                     appearanceSection
@@ -21,7 +21,7 @@ struct SettingsView: View {
                     timerSection
                     remindersSection
                     musicSection
-                    accountSection
+                    cardsSection
                     generalSection
                 }
             }
@@ -33,7 +33,7 @@ struct SettingsView: View {
     // MARK: - Sections
 
     private var cardsSection: some View {
-        Section(title: "Workspace cards", footer: "Reorder with the arrows. At least one card stays on.") {
+        Section(title: "Workspace cards") {
             ForEach(Array(settings.data.cards.enumerated()), id: \.element.id) { index, item in
                 HStack(spacing: 8) {
                     Image(systemName: item.card.icon)
@@ -59,7 +59,7 @@ struct SettingsView: View {
     }
 
     private var openingSection: some View {
-        Section(title: "Opening", footer: "Click the pill or the menu-bar cat to open it either way.") {
+        Section(title: "Opening") {
             toggleRow("Open when I hover the notch", "cursorarrow.motionlines", settings.binding(\.hoverToOpen))
             toggleRow("Option-N shortcut", "command", settings.binding(\.hotkeyEnabled))
         }
@@ -118,7 +118,7 @@ struct SettingsView: View {
 
     private var accountSection: some View {
         Section(title: "Cloud sync",
-                footer: sync.isSignedIn ? nil : "Cloud access needs an access key from the NotchCat owner. Your tasks work fully offline without it.") {
+                footer: sync.isSignedIn ? nil : "Contact owner for access key") {
             AccountForm(sync: sync, pillButton: { title, action in AnyView(pillButton(title, action: action)) })
         }
     }
@@ -138,10 +138,6 @@ struct SettingsView: View {
                         settings.data.checkForUpdates = on
                         Task { await UpdateChecker.shared.check() }
                     }))
-                if let version = UpdateChecker.shared.currentVersion {
-                    Text("NotchCat \(version). Checks GitHub for new releases; nothing else is sent.")
-                        .font(.system(size: 10.5)).opacity(0.45)
-                }
             }
             actionRow("Back up database", "externaldrive") { backup() }
             if let backupMessage {
@@ -289,17 +285,41 @@ private struct Section<Content: View>: View {
 
 // MARK: - Cloud account
 
-/// Sign in, create an account with an access key, and see sync status.
+/// Sign in or sign up. Signed out it shows two buttons; the one you tap opens its form underneath. Signing up asks for
+/// the access key first, checks it with the server, and only then asks for a username and password.
 private struct AccountForm: View {
     @ObservedObject var sync: SyncEngine
     let pillButton: (String, @escaping () -> Void) -> AnyView
 
-    @State private var creating = false
+    enum Mode { case signIn, signUp }
+    enum SignUpStep { case key, details }
+
+    @State private var mode: Mode?
+    @State private var step: SignUpStep = .key
     @State private var accessKey = ""
     @State private var username = ""
     @State private var password = ""
+    @State private var showPassword = false
     @State private var working = false
     @State private var error: String?
+    @FocusState private var passwordFocused: Bool
+
+    init(sync: SyncEngine, pillButton: @escaping (String, @escaping () -> Void) -> AnyView) {
+        self.sync = sync
+        self.pillButton = pillButton
+        // Test-only: open on a given state, so each one can be screenshotted without clicking.
+        switch ProcessInfo.processInfo.environment["NOTCHCAT_ACCOUNT_VIEW"] {
+        case "signin": _mode = State(initialValue: .signIn)
+        case "key": _mode = State(initialValue: .signUp)
+        case "keyerror":
+            _mode = State(initialValue: .signUp)
+            _error = State(initialValue: "That access key is not valid or has already been used")
+        case "details":
+            _mode = State(initialValue: .signUp)
+            _step = State(initialValue: .details)
+        default: break
+        }
+    }
 
     var body: some View {
         if let name = sync.username, sync.isSignedIn {
@@ -312,15 +332,23 @@ private struct AccountForm: View {
     // MARK: Signed in
 
     private func signedIn(_ name: String) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(spacing: 8) {
-                Image(systemName: "person.crop.circle").font(.system(size: 11, weight: .semibold)).frame(width: 16).opacity(0.7)
-                Text(name).font(.system(size: 12.5, weight: .medium))
-                Spacer()
-                statusDot
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Text(String(name.prefix(1)).uppercased())
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundStyle(Theme.ink)
+                    .frame(width: 32, height: 32)
+                    .background(Circle().fill(Theme.amber))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(name).font(.system(size: 13.5, weight: .semibold))
+                    HStack(spacing: 5) {
+                        Circle().fill(dotColor).frame(width: 6, height: 6)
+                        Text(statusText).font(.system(size: 11)).opacity(0.65).lineLimit(2)
+                    }
+                }
+                Spacer(minLength: 0)
             }
-            Text(statusText).font(.system(size: 11)).opacity(0.6).fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 8) {
+            HStack(spacing: 14) {
                 if sync.phase != .revoked {
                     pillButton("Sync now") { Task { await sync.syncNow() } }
                 }
@@ -330,26 +358,21 @@ private struct AccountForm: View {
         }
     }
 
-    private var statusDot: some View {
-        Circle().fill(dotColor).frame(width: 7, height: 7)
-    }
-
     private var dotColor: Color {
         switch sync.phase {
         case .idle: return Color(red: 0.4, green: 0.9, blue: 0.5)
         case .syncing: return Theme.amber
-        case .offline: return .gray
+        case .offline, .signedOut: return .gray
         case .failed, .revoked: return Color(red: 1, green: 0.42, blue: 0.4)
-        case .signedOut: return .gray
         }
     }
 
     private var statusText: String {
         switch sync.phase {
         case .syncing: return "Syncing…"
-        case .offline: return "Offline. Changes are saved here and will sync when you reconnect."
+        case .offline: return "Offline. Changes sync when you reconnect."
         case .failed(let message): return message
-        case .revoked: return "Cloud access for this account has been turned off. Your tasks are still here."
+        case .revoked: return "Cloud access was turned off. Your tasks are still here."
         case .idle:
             guard let last = sync.lastSync else { return "Signed in" }
             return "Synced " + last.formatted(.relative(presentation: .named))
@@ -360,48 +383,128 @@ private struct AccountForm: View {
     // MARK: Signed out
 
     private var signedOut: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                modeButton("Sign in", .signIn)
+                modeButton("Sign up", .signUp)
+            }
+            if let mode {
+                VStack(alignment: .leading, spacing: 8) {
+                    switch mode {
+                    case .signIn: signInFields
+                    case .signUp: signUpFields
+                    }
+                    if let error {
+                        Text(error).font(.system(size: 11)).foregroundStyle(Color(red: 1, green: 0.5, blue: 0.48))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.white.opacity(0.05)))
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .animation(.easeOut(duration: 0.18), value: mode)
+        .animation(.easeOut(duration: 0.18), value: step)
+    }
+
+    private func modeButton(_ title: String, _ target: Mode) -> some View {
+        let selected = mode == target
+        return Button {
+            if selected { mode = nil } else { open(target) }
+        } label: {
+            HStack(spacing: 5) {
+                Text(title).font(.system(size: 12.5, weight: .semibold, design: .rounded))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8.5, weight: .bold))
+                    .rotationEffect(.degrees(selected ? 180 : 0))
+                    .opacity(0.6)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 7)
+            .background(Capsule().fill(selected ? Theme.amber : .white.opacity(0.1)))
+            .foregroundStyle(selected ? Theme.ink : .white)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func open(_ target: Mode) {
+        mode = target
+        step = .key
+        error = nil
+        password = ""
+        showPassword = false
+    }
+
+    // MARK: Sign in
+
+    private var signInFields: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 0) {
-                modeButton("Sign in", selected: !creating) { creating = false; error = nil }
-                modeButton("Use access key", selected: creating) { creating = true; error = nil }
-            }
-            .padding(2)
-            .background(Capsule().fill(.white.opacity(0.08)))
-
-            field("Server", text: $sync.serverText, prompt: SyncEngine.defaultServer)
-            if creating { field("Access key", text: $accessKey, prompt: "NC-XXXX-XXXX-XXXX-XXXX") }
-            field("Username", text: $username, prompt: creating ? "Choose a username" : "Username")
-            secureField
-
-            if let error {
-                Text(error).font(.system(size: 11)).foregroundStyle(Color(red: 1, green: 0.5, blue: 0.48))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            HStack {
-                pillButton(working ? "Please wait…" : (creating ? "Create account" : "Sign in")) { submit() }
-                    .opacity(canSubmit ? 1 : 0.45).allowsHitTesting(canSubmit)
+            textField("Username", text: $username)
+            passwordField("Password")
+            primaryButton(working ? "Signing in…" : "Sign in", enabled: !username.isEmpty && !password.isEmpty && !working) {
+                run { try await sync.signIn(username: username, password: password) }
             }
         }
     }
 
-    private var canSubmit: Bool {
-        !working && !username.isEmpty && password.count >= (creating ? 8 : 1) && (!creating || !accessKey.isEmpty)
-            && !sync.serverText.trimmingCharacters(in: .whitespaces).isEmpty
+    // MARK: Sign up
+
+    @ViewBuilder
+    private var signUpFields: some View {
+        switch step {
+        case .key:
+            VStack(alignment: .leading, spacing: 8) {
+                textField("Access key", text: $accessKey, mono: true)
+                    .onSubmit { verifyKey() }
+                primaryButton(working ? "Checking…" : "Continue", enabled: !accessKey.trimmingCharacters(in: .whitespaces).isEmpty && !working) {
+                    verifyKey()
+                }
+            }
+        case .details:
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Color(red: 0.4, green: 0.9, blue: 0.5))
+                    Text("Access key accepted").font(.system(size: 11.5, weight: .semibold))
+                    Spacer(minLength: 0)
+                    Button("Change") { step = .key; error = nil }
+                        .buttonStyle(.plain).font(.system(size: 11, weight: .semibold)).opacity(0.6)
+                }
+                textField("Choose a username", text: $username)
+                passwordField("Password (8+ characters)")
+                primaryButton(working ? "Creating…" : "Create account",
+                              enabled: !username.isEmpty && password.count >= 8 && !working) {
+                    run {
+                        do {
+                            try await sync.signUp(accessKey: accessKey, username: username, password: password)
+                        } catch let e as APIError where e.status == 403 {
+                            // Someone used the key in the meantime, or the owner turned it off.
+                            step = .key
+                            throw e
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    private func submit() {
-        guard canSubmit else { return }
+    private func verifyKey() {
+        guard !working, !accessKey.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        run(onSuccess: { step = .details }) { try await sync.checkAccessKey(accessKey) }
+    }
+
+    // MARK: Pieces
+
+    /// Runs a network step with the shared "working" and error handling.
+    private func run(onSuccess: (() -> Void)? = nil, _ work: @escaping () async throws -> Void) {
         working = true
         error = nil
         Task {
             do {
-                if creating {
-                    try await sync.signUp(accessKey: accessKey, username: username, password: password)
-                } else {
-                    try await sync.signIn(username: username, password: password)
-                }
+                try await work()
                 password = ""
-                accessKey = ""
+                onSuccess?()
             } catch let e as URLError {
                 error = e.code == .notConnectedToInternet ? "You're offline." : "Couldn't reach the server."
             } catch {
@@ -411,35 +514,76 @@ private struct AccountForm: View {
         }
     }
 
-    private func modeButton(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 11.5, weight: .semibold))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 4)
-                .background(Capsule().fill(selected ? Theme.amber : .clear))
-                .foregroundStyle(selected ? Theme.ink : .white.opacity(0.6))
-        }
-        .buttonStyle(.plain)
+    private func fieldBackground() -> some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.white.opacity(0.08))
     }
 
-    private func field(_ label: String, text: Binding<String>, prompt: String) -> some View {
+    private func textField(_ prompt: String, text: Binding<String>, mono: Bool = false) -> some View {
         TextField("", text: text, prompt: Text(prompt).foregroundStyle(.white.opacity(0.3)))
             .textFieldStyle(.plain)
             .autocorrectionDisabled()
-            .font(.system(size: 12.5, weight: .medium))
-            .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.white.opacity(0.08)))
-            .accessibilityLabel(label)
+            .font(.system(size: 12.5, weight: .medium, design: mono ? .monospaced : .default))
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .background(fieldBackground())
+            .accessibilityLabel(prompt)
     }
 
-    private var secureField: some View {
-        SecureField("", text: $password, prompt: Text(creating ? "Password (8+ characters)" : "Password").foregroundStyle(.white.opacity(0.3)))
+    private func passwordField(_ prompt: String) -> some View {
+        HStack(spacing: 6) {
+            Group {
+                if showPassword {
+                    TextField("", text: $password, prompt: Text(prompt).foregroundStyle(.white.opacity(0.3)))
+                } else {
+                    SecureField("", text: $password, prompt: Text(prompt).foregroundStyle(.white.opacity(0.3)))
+                }
+            }
             .textFieldStyle(.plain)
+            .autocorrectionDisabled()
             .font(.system(size: 12.5, weight: .medium))
-            .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.white.opacity(0.08)))
-            .onSubmit { submit() }
-            .accessibilityLabel("Password")
+            .focused($passwordFocused)
+            .onSubmit { submitFromPassword() }
+            Button {
+                showPassword.toggle()
+                passwordFocused = true
+            } label: {
+                Image(systemName: showPassword ? "eye.slash" : "eye")
+                    .font(.system(size: 11.5))
+                    .opacity(0.55)
+                    .frame(width: 20, height: 18)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(showPassword ? "Hide password" : "Show password")
+            .accessibilityLabel(showPassword ? "Hide password" : "Show password")
+        }
+        .padding(.horizontal, 10).padding(.vertical, 7)
+        .background(fieldBackground())
+    }
+
+    private func submitFromPassword() {
+        guard !working else { return }
+        if mode == .signIn, !username.isEmpty, !password.isEmpty {
+            run { try await sync.signIn(username: username, password: password) }
+        } else if mode == .signUp, step == .details, !username.isEmpty, password.count >= 8 {
+            run {
+                do { try await sync.signUp(accessKey: accessKey, username: username, password: password) }
+                catch let e as APIError where e.status == 403 { step = .key; throw e }
+            }
+        }
+    }
+
+    private func primaryButton(_ title: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12.5, weight: .semibold, design: .rounded))
+                .foregroundStyle(Theme.ink)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 7)
+                .background(Capsule().fill(Theme.amber))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .opacity(enabled ? 1 : 0.4)
+        .disabled(!enabled)
     }
 }

@@ -81,6 +81,11 @@ final class SyncEngine: ObservableObject {
 
     // MARK: - Accounts
 
+    /// Asks the server whether an access key is good, so the form can ask for a username only once it is.
+    func checkAccessKey(_ accessKey: String) async throws {
+        try await makeAPI().checkKey(accessKey)
+    }
+
     func signUp(accessKey: String, username: String, password: String) async throws {
         let api = try makeAPI()
         let tokens = try await api.signUp(accessKey: accessKey, username: username, password: password, device: Self.deviceName)
@@ -112,7 +117,8 @@ final class SyncEngine: ObservableObject {
         keychain.write(tokens.refreshToken)
         accessToken = tokens.accessToken
         accessExpiry = Date().addingTimeInterval(TimeInterval(tokens.expiresIn - 30))
-        meta.set("server_url", serverText.trimmingCharacters(in: .whitespacesAndNewlines))
+        meta.set("server_url", (serverText.trimmingCharacters(in: .whitespaces).isEmpty ? Self.defaultServer : serverText)
+            .trimmingCharacters(in: .whitespacesAndNewlines))
         meta.set("user_id", tokens.user.id)
         meta.set("username", tokens.user.username)
         username = tokens.user.username
@@ -134,8 +140,10 @@ final class SyncEngine: ObservableObject {
     }
 
     private func makeAPI() throws -> SyncAPI {
-        guard let url = SyncAPI.normalizedURL(serverText) else {
-            throw APIError(status: 0, message: "Enter a valid server address (https://…)")
+        // The address is not shown in the app; it falls back to the NotchCat server.
+        let text = serverText.trimmingCharacters(in: .whitespaces).isEmpty ? Self.defaultServer : serverText
+        guard let url = SyncAPI.normalizedURL(text) else {
+            throw APIError(status: 0, message: "The server address is not valid.")
         }
         return SyncAPI(baseURL: url)
     }

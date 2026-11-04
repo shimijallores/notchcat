@@ -273,6 +273,10 @@ extension SelfTest {
         noteA.text = "A wrote this before signing in"             // so did both notes
         noteB.text = "B wrote this before signing in"
         logA.log(FocusSession(taskID: nil, startedAt: Date().addingTimeInterval(-7200), activeSeconds: 1500, plannedSeconds: 1500, completed: true))
+        do { try await ea.checkAccessKey("NC-AAAA-AAAA-AAAA-AAAA"); check("check-key refuses a bad key", false) }
+        catch { check("check-key refuses a bad key", (error as? APIError)?.status == 403, "\(error)") }
+        do { try await ea.checkAccessKey(key); try await ea.checkAccessKey(key.lowercased()); check("check-key accepts a good key, twice (not used up)", true) }
+        catch { check("check-key accepts a good key, twice (not used up)", false, "\(error)") }
         do { try await ea.signUp(accessKey: "NC-AAAA-AAAA-AAAA-AAAA", username: user, password: "correct horse"); check("bad key refused", false) }
         catch { check("bad key refused", (error as? APIError)?.status == 403, "\(error)") }
         do { try await ea.signUp(accessKey: key, username: user, password: "correct horse"); check("sign up with key", ea.username == user) }
