@@ -231,3 +231,105 @@ enum SelfTest {
         }
     }
 }
+
+// MARK: - Sync end-to-end (`--selftest-sync`)
+
+extension SelfTest {
+    /// Two devices (separate databases, separate engines) syncing through a real server.
+    /// Needs NOTCHCAT_DB (so the Keychain item is a test one), NOTCHCAT_SERVER and NOTCHCAT_TEST_KEY.
+    static func sync() async -> Bool {
+        let env = ProcessInfo.processInfo.environment
+        guard env["NOTCHCAT_DB"] != nil, let server = env["NOTCHCAT_SERVER"], let key = env["NOTCHCAT_TEST_KEY"] else {
+            print("needs NOTCHCAT_DB, NOTCHCAT_SERVER, NOTCHCAT_TEST_KEY")
+            return false
+        }
+        var failures = 0
+        func check(_ name: String, _ ok: Bool, _ detail: @autoclosure () -> String = "") {
+            print("\(ok ? "PASS" : "FAIL")  \(name)\(ok ? "" : "  -> \(detail())")")
+            if !ok { failures += 1 }
+        }
+
+        let dir = "/tmp/nc-sync-test"
+        try? FileManager.default.removeItem(atPath: dir)
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let dbA = try! Database(path: "\(dir)/a.sqlite"), dbB = try! Database(path: "\(dir)/b.sqlite")
+        let a = TaskStore(db: dbA), b = TaskStore(db: dbB)
+        let ea = SyncEngine(store: a, db: dbA, keychainAccount: "test-a")
+        let eb = SyncEngine(store: b, db: dbB, keychainAccount: "test-b")
+        ea.serverText = server
+        eb.serverText = server
+
+        func titles(_ s: TaskStore) -> [String] { s.tasks.map(\.title) }
+        func task(_ s: TaskStore, _ title: String) -> TaskItem? { s.tasks.first { $0.title == title } }
+        func pause() async { try? await Task.sleep(nanoseconds: 15_000_000) }
+        let user = "tester\(Int.random(in: 1000...9999))"
+
+        // Accounts
+        a.add(title: "Existing before signing in", day: .today)    // a task from before the account existed
+        do { try await ea.signUp(accessKey: "NC-AAAA-AAAA-AAAA-AAAA", username: user, password: "correct horse"); check("bad key refused", false) }
+        catch { check("bad key refused", (error as? APIError)?.status == 403, "\(error)") }
+        do { try await ea.signUp(accessKey: key, username: user, password: "correct horse"); check("sign up with key", ea.username == user) }
+        catch { check("sign up with key", false, "\(error)") }
+        do { try await eb.signIn(username: user, password: "wrong password"); check("wrong password refused", false) }
+        catch { check("wrong password refused", (error as? APIError)?.status == 401, "\(error)") }
+        do { try await eb.signIn(username: user.uppercased(), password: "correct horse"); check("second device signs in", eb.username == user) }
+        catch { check("second device signs in", false, "\(error)") }
+
+        // Basic flow, including a task that existed before the account
+        a.add(title: "Buy milk", day: .today)
+        a.add(title: "Write docs", day: .today)
+        await ea.syncNow(); await eb.syncNow()
+        check("pre-existing task reaches device B", task(b, "Existing before signing in") != nil, "\(titles(b))")
+        check("new tasks reach device B", task(b, "Buy milk") != nil && task(b, "Write docs") != nil, "\(titles(b))")
+        check("same order on both", titles(a) == titles(b), "\(titles(a)) vs \(titles(b))")
+
+        // Offline edits on both, then reconnect: different fields of one task, a delete, and a new task
+        await pause(); a.rename(task(a, "Buy milk")!.id, to: "Buy oat milk")
+        await pause(); b.toggleDone(task(b, "Buy milk")!.id)
+        await pause(); a.delete(task(a, "Write docs")!.id)
+        await pause(); b.add(title: "Call mom", day: .today)
+        await ea.syncNow(); await eb.syncNow(); await ea.syncNow()
+        let milkA = task(a, "Buy oat milk"), milkB = task(b, "Buy oat milk")
+        check("rename and done-tick both survive", milkA?.isDone == true && milkB?.isDone == true, "A=\(String(describing: milkA)) B=\(String(describing: milkB))")
+        check("delete reaches the other device", task(b, "Write docs") == nil && task(a, "Write docs") == nil, "\(titles(b))")
+        check("task added offline reaches the other device", task(a, "Call mom") != nil, "\(titles(a))")
+        check("both devices agree", Set(titles(a)) == Set(titles(b)), "\(titles(a)) vs \(titles(b))")
+
+        // Same field edited on both: the later edit wins, whichever device syncs first
+        let target = task(a, "Call mom")!.id
+        await pause(); a.rename(target, to: "Call Mom (A)")
+        await pause(); b.rename(target, to: "Call Mom (B)")
+        await eb.syncNow(); await ea.syncNow(); await eb.syncNow()      // B's edit is newer but A syncs second
+        check("newest edit wins a conflict", task(a, "Call Mom (B)") != nil && task(b, "Call Mom (B)") != nil, "A=\(titles(a)) B=\(titles(b))")
+
+        // Reminders and time limits round-trip, including clearing them
+        await pause(); a.setTimeLimit(target, minutes: 45); a.setReminder(target, at: Date().addingTimeInterval(3600))
+        await ea.syncNow(); await eb.syncNow()
+        let got = b.tasks.first { $0.id == target }
+        check("time limit and reminder sync", got?.timeLimitMinutes == 45 && got?.remindAt != nil, "\(String(describing: got))")
+        await pause(); b.setTimeLimit(target, minutes: nil)
+        await eb.syncNow(); await ea.syncNow()
+        check("clearing a field syncs", a.tasks.first { $0.id == target }?.timeLimitMinutes == nil)
+
+        // Reordering
+        a.add(title: "Third", day: .today); a.add(title: "Fourth", day: .today)
+        await ea.syncNow(); await eb.syncNow()
+        a.moveVisible(day: .today, from: IndexSet(integer: a.visibleTasks(for: .today).count - 1), to: 0)
+        await ea.syncNow(); await eb.syncNow()
+        check("reorder syncs", a.tasks.map(\.title) == b.tasks.map(\.title), "\(titles(a)) vs \(titles(b))")
+
+        // Restart: a fresh store and engine reading the same database must not resend or lose anything
+        let a2 = TaskStore(db: dbA)
+        check("restart keeps tasks and bookkeeping", titles(a2) == titles(a) && a2.pendingChanges().isEmpty, "pending=\(a2.pendingChanges().count)")
+
+        // Sign out keeps the tasks
+        let before = titles(b)
+        await eb.signOut()
+        check("sign out keeps tasks", titles(b) == before && !eb.isSignedIn)
+        check("sign out clears the stored login", KeychainStore(service: KeychainStore.defaultService, account: "test-b").read() == nil)
+
+        await ea.signOut()   // leave no test login in the Keychain
+        print(failures == 0 ? "\nALL PASSED" : "\n\(failures) FAILED")
+        return failures == 0
+    }
+}

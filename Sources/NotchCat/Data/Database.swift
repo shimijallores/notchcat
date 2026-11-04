@@ -224,6 +224,22 @@ final class Database {
             key   TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
+        """,
+        // 2: cloud sync bookkeeping, kept beside the tasks table so existing queries are untouched.
+        // task_sync: when each field was last edited here (epoch ms), which fields still need pushing,
+        // and a tombstone for deleted tasks so the deletion can reach the server.
+        """
+        CREATE TABLE task_sync (
+            task_id  TEXT PRIMARY KEY,
+            field_ts TEXT NOT NULL DEFAULT '{}',
+            dirty    TEXT NOT NULL DEFAULT '[]',
+            deleted  INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE sync_meta (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
         """
     ]
 

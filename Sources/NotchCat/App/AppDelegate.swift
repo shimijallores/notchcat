@@ -17,6 +17,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--seed-demo") { DemoData.seed(into: .shared) }
         if CommandLine.arguments.contains("--selftest-note") { SelfTest.noteConversion(); exit(0) }
         if CommandLine.arguments.contains("--selftest-settings") { SelfTest.settings(); exit(0) }
+        if CommandLine.arguments.contains("--selftest-sync") {
+            Task { exit(await SelfTest.sync() ? 0 : 1) }
+            return
+        }
         if CommandLine.arguments.contains("--fake-music") { DispatchQueue.main.async { SelfTest.fakeMusic() } }
         // Run after launch completes, so the settings sink below has already made its first (off) decision.
         if CommandLine.arguments.contains("--selftest-music") { DispatchQueue.main.async { SelfTest.music() } }
@@ -27,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         timer.onTaskSessionFinished = { TaskStore.shared.markDone($0) }
 
         controller = NotchController()
+        SyncEngine.shared.start()
         // Needs the finish callback wired above, so it runs after it.
         if CommandLine.arguments.contains("--selftest-focus") { DispatchQueue.main.async { SelfTest.focusCompletion() } }
 

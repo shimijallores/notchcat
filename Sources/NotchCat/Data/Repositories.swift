@@ -24,6 +24,12 @@ struct TaskRepository {
         }) ?? []
     }
 
+    /// Saved display order of every task, keyed by id.
+    func loadPositions() -> [UUID: Int] {
+        let rows = (try? db.query("SELECT id, position FROM tasks") { ($0.text(0), $0.int(1)) }) ?? []
+        return Dictionary(uniqueKeysWithValues: rows.compactMap { id, pos in UUID(uuidString: id).map { ($0, pos) } })
+    }
+
     func upsert(_ t: TaskItem, position: Int) {
         let sql = """
         INSERT INTO tasks (id, title, is_done, day, planned_day, position, time_limit_minutes, remind_at, reminded, created_at, completed_at)

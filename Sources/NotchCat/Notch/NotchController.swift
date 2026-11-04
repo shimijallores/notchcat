@@ -335,6 +335,12 @@ final class NotchController {
         }
 
         func finish() {
+            // Settings scrolls, so also render it tall enough to see every section.
+            let tall = NSHostingView(rootView: SettingsView(settings: settings)
+                .padding(12).background(Color(DropContainerView.housing)).frame(width: 780, height: 1180))
+            tall.frame = NSRect(x: 0, y: 0, width: 780, height: 1180)
+            tall.layoutSubtreeIfNeeded()
+            snapshot(tall, to: dir.appendingPathComponent("settings-full.png"))
             ui.tab = .workspace
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                 self.ui.modal = .timerDuration

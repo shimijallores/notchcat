@@ -1,8 +1,8 @@
 # NotchCat Sync & Accounts — Future Plan
 
-> Status: **planned, not started.** This is the agreed design for turning NotchCat
-> from a local-only Mac app into an account-based, offline-first product that syncs
-> across macOS, a future iOS app, and a future Windows app. Nothing here is built yet.
+> Status: **pass 1 is built** (invite-only accounts and task sync, server in `../notchcat-server`, Mac client in
+> `Sources/NotchCat/Sync`). Notes, focus sessions, settings, iOS and Windows are still planned. Where this document
+> and the server's README differ, the README describes what exists.
 
 ## Goal
 
@@ -80,52 +80,42 @@ Every client keeps an **outbox**: a local queue of changes made while offline.
 Sync triggers: on a timer, on app foreground, and immediately when connectivity returns —
 so the queue drains automatically and quietly.
 
-## Auth (real sign-up product)
+## Auth: invite-only, with access keys
 
-- Email + password, **Argon2** hashing.
-- Short-lived **access token** (JWT, ~15 min) + long-lived **refresh token** in the OS
-  secure store (Keychain on macOS/iOS, Credential Manager on Windows).
-- **Email verification + password reset** from the start.
-- User table designed to allow **multiple auth methods per account** now, so adding
-  **Sign in with Apple** for the iOS app later needs no migration.
+Decided after the first draft: nobody can create an account on their own.
 
-## API surface (first cut)
+- The owner generates **access keys** (`NC-XXXX-XXXX-XXXX-XXXX`) with a command-line tool on the server. There is
+  no admin API. Keys are stored hashed and each works for one sign-up.
+- A person enters their key once to **choose a username and password**. After that they sign in with the username.
+- **Revoking a key** locks that account out (login, refresh and sync return 403) without touching their local data.
+- Usernames, not email, so there is no mail service, verification or password-reset flow. The owner resets a
+  password from the command line.
+- Argon2 password hashes; short-lived access tokens (15 min) plus rotating refresh tokens (60 days) kept in the
+  Keychain on macOS.
+- Sign in with Apple stays a later option for the iOS app.
 
-```
-POST /auth/signup            {email, password} -> tokens
-POST /auth/login             {email, password} -> tokens
-POST /auth/refresh           {refresh_token}   -> tokens
-POST /auth/verify-email      {token}
-POST /auth/request-reset     {email}
-POST /auth/reset             {token, password}
-GET  /me                                         -> user
+## API surface
 
-POST /sync/push              {changes:[...]}    -> applied results
-GET  /sync/pull?cursor=N                         -> {changes:[...], cursor:M}
-```
+See the server README for the current list. In short: `/v1/auth/{signup,login,refresh,logout}`, `/v1/me`,
+`POST /v1/sync/push` and `GET /v1/sync/pull`.
 
-## Rollout — tracer bullet first, then widen
+## Rollout
 
-**Pass 1 (first slice, prove the whole pipe):**
-- FastAPI + Postgres on the Azure VM behind Caddy.
-- `signup`, `login`, `refresh`, `me`.
-- `push` / `pull` for **tasks only**.
-- Mac client: an **Account** section in Settings (sign up / log in / signed-in state),
-  Keychain token storage, the outbox + sync loop, tasks syncing end to end.
-- Acceptance: edit a task on Mac offline → reconnect → it lands on the server; change it
-  on the server → it pulls down.
+**Pass 1 (done):**
+- FastAPI + SQLAlchemy server (SQLite for tests, Postgres in production), access keys, accounts, task sync.
+- Mac: a "Cloud sync" section in Settings, Keychain-stored login, a queue of unsent field edits, tombstones for
+  deletes, background sync (after edits, every minute, and when the network returns).
+- Verified with an end-to-end test of two devices syncing through a live server (`--selftest-sync`).
 
-**Later passes (explicitly not pass 1):**
-- Widen sync to notes, reminders, focus sessions, settings.
-- Note-body text merge.
-- Email verification / reset UX polish; rate limiting, backups, monitoring.
-- Sign in with Apple.
+**Next:**
+- Deploy to the Azure VM (Postgres, TLS, a process manager) and make its address the app's default.
+- Rate limiting, Alembic migrations, backups.
+- Sync for the notepad, focus sessions and settings; note-body text merge.
 - **iOS client**, then **Windows client** (separate UI apps, same API).
 
-## Open decisions (revisit when this work starts)
+## Open decisions
 
-- Final hosting once there are paying users (Azure student VM is a starting point only).
-- Whether to share a portable "core" across platforms later, or rebuild each client's UI
-  natively against the shared API (current lean: native UI per platform, shared API).
-- Domain name to use for the API.
-```
+- Final hosting once there are many users (the Azure student VM is a starting point only).
+- Whether to share a portable core across platforms later, or rebuild each client's UI natively against the shared
+  API (current lean: native UI per platform, shared API).
+- Domain name for the API.

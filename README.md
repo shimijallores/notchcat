@@ -20,6 +20,7 @@ Native macOS app, SwiftUI + AppKit, SQLite storage. Local-first: your data never
 - **Insights.** "Momentum is building" summary, tasks completed vs planned, focus time, and a 7-day stacked bar chart (Tasks / Focus toggle, step back through earlier weeks, tap a bar for details).
 - **History.** The third Insights segment lists every finished task, grouped by the day it was completed, with the time finished and the focus time spent on it. Search, page back with "Show older", or **Restore to Today** from the row menu.
 - **Now Playing (optional, off by default).** A Spotify / Apple Music card with artwork, a tint taken from the cover, scrubbable progress and previous / play-pause / next. An optional chip with the cover and equalizer bars sits on the right shoulder of the notch, ahead of the timer pill. Turn both on in Settings.
+- **Cloud sync (invite only, optional).** Settings → Cloud sync signs in to a NotchCat server with a username and password; a new person first needs an **access key** from the server's owner. Tasks then sync between devices. Everything works offline and queues edits until the connection returns. See `docs/SYNC_PLAN.md` and the separate `notchcat-server` project.
 - **Battery.** The charge percentage sits beside the name in the tray header, with a bolt while charging and red when low and unplugged. It updates when the power state changes (no polling), hides itself on Macs without a battery, and can be switched off in Settings → Appearance.
 - **Settings.** Card visibility and order, Week / Insights tabs, countdown pill, default focus length, sounds, "Time's up" card, reminders and snooze length, hover-to-open, the ⌥N shortcut, paper grain, open at login, database backup, and quit.
 - **Fake notch for Macs without one.** Settings → Appearance → Fake notch draws either a black **Notch** flush with the top edge or a floating **Island** pill. The tray opens from it either way, and the timer pill and album chip line up beside it. Off by default, and hidden on Macs with a real notch.
@@ -94,6 +95,8 @@ Everything is stored in one SQLite database (WAL mode, no third-party packages):
 | Table | Holds |
 | --- | --- |
 | `tasks` | Title, done state, day, original planned day, order, time limit, reminder |
+| `task_sync` | Per-field edit times, unsent fields and delete markers, used by cloud sync |
+| `sync_meta` | Server address, signed-in username and sync cursor (the login itself is in the Keychain) |
 | `focus_sessions` | Each finished or abandoned session with the seconds it was really running |
 | `notes` | The notepad (one long-lived note; older per-day notes are kept and were merged into it once) |
 | `settings` | App settings as JSON |
@@ -110,6 +113,7 @@ Sources/NotchCat/
   Data/     Database (SQLite wrapper + migrations), Repositories, DemoData (dev only)
   Models/   TaskStore, NoteStore, FocusTimer, AppSettings, ReminderScheduler,
             CalendarStore (EventKit), InsightsModel, HistoryModel, MusicService, BatteryMonitor
+  Sync/     SyncEngine, SyncAPI, KeychainStore, wire types, sync bookkeeping tables
   Notch/    NotchController (hover / click-away / islands / sizing), NotchGeometry,
             NotchPanels, DropContainerView (Core Animation silhouette), HotKey
   Views/    RootView (tabs, workspace, banner, modals), TasksCard, TimerCard, NotepadCard,
@@ -136,7 +140,7 @@ Pass these to `build/NotchCat.app/Contents/MacOS/NotchCat`. Set `NOTCHCAT_DB=/tm
 | `--seed-demo` | Fill the test database with two weeks of sample history |
 | `--remind-in S` | Add a task with a reminder S seconds out |
 | `--snapshot DIR` | Render each tab, the modal and the pill to PNGs, then quit |
-| `--selftest-note`, `--selftest-settings`, `--selftest-music`, `--selftest-focus` | Run non-UI checks and quit |
+| `--selftest-note`, `--selftest-settings`, `--selftest-music`, `--selftest-focus`, `--selftest-sync` (needs a running server; see Sync/) | Run non-UI checks and quit |
 | `--fake-music` | Show a fake playing track (no Spotify / Music needed) |
 | `--fake-notch off\|notch\|island` | Set the fake notch style (needs `NOTCHCAT_DB`) |
 | `NOTCHCAT_FORCE_NO_NOTCH=1` (env) | Treat a notched screen as notch-less, to test the fake notch |
