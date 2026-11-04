@@ -8,7 +8,8 @@ import Network
 /// sends them when it can, then pulls whatever other devices changed. Nothing here blocks the UI.
 @MainActor
 final class SyncEngine: ObservableObject {
-    static let shared = SyncEngine(store: .shared, db: .shared)
+    static let shared = SyncEngine(
+        sources: [TaskStore.shared, NoteStore.shared, SessionSync.shared, SettingsSync.shared], db: .shared)
 
     enum Phase: Equatable {
         case signedOut
@@ -25,7 +26,7 @@ final class SyncEngine: ObservableObject {
     @Published private(set) var lastSync: Date?
     @Published var serverText: String
 
-    private let store: TaskStore
+    private let sources: [SyncSource]
     private let meta: SyncMetaRepository
     private let keychain: KeychainStore
     private var accessToken: String?
@@ -38,8 +39,8 @@ final class SyncEngine: ObservableObject {
     private var pathMonitor: NWPathMonitor?
     private var wasOnline = true
 
-    init(store: TaskStore, db: Database, keychainAccount: String = "refresh-token") {
-        self.store = store
+    init(sources: [SyncSource], db: Database, keychainAccount: String = "refresh-token") {
+        self.sources = sources
         meta = SyncMetaRepository(db: db)
         keychain = KeychainStore(service: KeychainStore.defaultService, account: keychainAccount)
         serverText = meta.get("server_url") ?? ProcessInfo.processInfo.environment["NOTCHCAT_SERVER"] ?? ""
@@ -53,7 +54,7 @@ final class SyncEngine: ObservableObject {
     /// Call once at launch. Does nothing for people who never signed in.
     func start() {
         guard cancellables.isEmpty else { return }
-        store.localChange
+        Publishers.MergeMany(sources.map(\.changes))
             .debounce(for: .seconds(1.5), scheduler: RunLoop.main)
             .sink { [weak self] in Task { await self?.syncNow() } }
             .store(in: &cancellables)
@@ -101,7 +102,7 @@ final class SyncEngine: ObservableObject {
     private func accept(_ tokens: TokenPair) {
         // A different account than last time starts from scratch rather than mixing two people's data.
         if let previous = meta.get("user_id"), previous != tokens.user.id {
-            store.resetSyncState()
+            sources.forEach { $0.resetSyncState() }
             cursor = 0
             meta.set("cursor", "0")
         }
@@ -112,7 +113,7 @@ final class SyncEngine: ObservableObject {
         meta.set("user_id", tokens.user.id)
         meta.set("username", tokens.user.username)
         username = tokens.user.username
-        store.enrollAllForSync()
+        sources.forEach { $0.enroll() }
         phase = .idle
     }
 
@@ -126,7 +127,7 @@ final class SyncEngine: ObservableObject {
         cursor = 0
         username = nil
         lastSync = nil
-        store.resetSyncState()
+        sources.forEach { $0.resetSyncState() }
     }
 
     private func makeAPI() throws -> SyncAPI {
@@ -158,24 +159,30 @@ final class SyncEngine: ObservableObject {
             let api = try makeAPI()
             var token = try await validToken(api)
 
-            // Push in chunks the server accepts, applying its merged answer after each.
-            var pending = store.pendingChanges().count
-            while pending > 0 {
-                let batch = Array(store.pendingChanges().prefix(200))
+            // Push in chunks the server accepts, handing each source the server's answer for its own items.
+            var pending = totalPending
+            var rounds = 0
+            while pending > 0, rounds < 50 {
+                rounds += 1
+                var batch: [WireChange] = []
+                for source in sources where batch.count < 200 { batch += source.pendingChanges(limit: 200 - batch.count) }
+                if batch.isEmpty { break }
                 let result: PushResult
                 do { result = try await api.push(batch, accessToken: token) }
                 catch let error as APIError where error.status == 401 {
                     token = try await refreshToken(api)
                     result = try await api.push(batch, accessToken: token)
                 }
-                store.applyRemote(result.tasks)
-                if !result.rejected.isEmpty {
-                    NSLog("NotchCat sync: server refused \(result.rejected.count) change(s): \(result.rejected.first?.reason ?? "")")
-                    store.dropPending(ids: result.rejected.map(\.id))
+                route(result.records) { $0.apply($1) }
+                route(result.conflicts) { $0.resolveConflicts($1) }
+                for (collection, items) in Dictionary(grouping: result.rejected, by: \.collection) {
+                    NSLog("NotchCat sync: server refused \(items.count) \(collection) change(s): \(items.first?.reason ?? "")")
+                    source(for: collection)?.dropPending(ids: items.map(\.id))
                 }
-                // If a pass didn't shrink the queue (a field edited again mid-flight, say), the next sync picks it up.
-                let remaining = store.pendingChanges().count
-                if remaining >= pending { break }
+                // A pass that didn't shrink the queue (an item edited again mid-flight) is picked up next time,
+                // unless it only turned up conflicts, which the next pass resolves.
+                let remaining = totalPending
+                if remaining >= pending && result.conflicts.isEmpty { break }
                 pending = remaining
             }
 
@@ -187,7 +194,7 @@ final class SyncEngine: ObservableObject {
                     token = try await refreshToken(api)
                     page = try await api.pull(cursor: cursor, accessToken: token)
                 }
-                store.applyRemote(page.tasks)
+                route(page.records) { $0.apply($1) }
                 cursor = page.cursor
                 meta.set("cursor", String(cursor))
                 if !page.hasMore { break }
@@ -201,6 +208,17 @@ final class SyncEngine: ObservableObject {
             phase = .offline
         } catch {
             phase = .failed(error.localizedDescription)
+        }
+    }
+
+    private var totalPending: Int { sources.reduce(0) { $0 + $1.pendingCount } }
+
+    private func source(for collection: String) -> SyncSource? { sources.first { $0.collection == collection } }
+
+    /// Hands each source only the records of its own collection.
+    private func route(_ records: [WireRecord], _ body: (SyncSource, [WireRecord]) -> Void) {
+        for (collection, items) in Dictionary(grouping: records, by: \.collection) {
+            if let source = source(for: collection) { body(source, items) }
         }
     }
 

@@ -341,7 +341,7 @@ extension TaskStore {
                     stamps[field] = meta.fieldTs[field] ?? Self.ms(Date())
                 }
             }
-            out.append(WireChange(id: id.uuidString.lowercased(), fields: fields, fieldTs: stamps))
+            out.append(WireChange(collection: "tasks", id: id.uuidString.lowercased(), fields: fields, fieldTs: stamps))
         }
         return out
     }
@@ -366,7 +366,7 @@ extension TaskStore {
     }
 
     /// Forgets all sync state (signing out). Tasks stay; they are treated as new if an account signs in later.
-    func resetSyncState() {
+    fileprivate func resetSyncStateImpl() {
         syncMeta = [:]
         syncRepo.deleteAll()
     }
@@ -448,4 +448,17 @@ extension TaskStore {
         }
         tasks = working
     }
+}
+
+// MARK: - SyncSource
+
+extension TaskStore: SyncSource {
+    var collection: String { "tasks" }
+    var changes: AnyPublisher<Void, Never> { localChange.eraseToAnyPublisher() }
+    var pendingCount: Int { pendingChanges().count }
+    func pendingChanges(limit: Int) -> [WireChange] { Array(pendingChanges().prefix(limit)) }
+    func apply(_ records: [WireRecord]) { applyRemote(records.filter { $0.collection == "tasks" }) }
+    func resolveConflicts(_ records: [WireRecord]) {}   // tasks merge field by field and never conflict
+    func enroll() { enrollAllForSync() }
+    func resetSyncState() { resetSyncStateImpl() }
 }

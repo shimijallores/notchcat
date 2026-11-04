@@ -2,7 +2,7 @@
 
 A tasks and focus-timer dashboard that lives in your MacBook's notch. Hover the notch (or press **⌥N**) and a tray grows out of it with your tasks and a pomodoro timer. Close it and a slim dot-matrix countdown stays docked beside the notch.
 
-Native macOS app, SwiftUI + AppKit, SQLite storage. Local-first: your data never leaves your Mac.
+Native macOS app, SwiftUI + AppKit, SQLite storage. Local-first: your data stays on your Mac unless you sign in to a sync server.
 
 ## Features
 
@@ -20,8 +20,9 @@ Native macOS app, SwiftUI + AppKit, SQLite storage. Local-first: your data never
 - **Insights.** "Momentum is building" summary, tasks completed vs planned, focus time, and a 7-day stacked bar chart (Tasks / Focus toggle, step back through earlier weeks, tap a bar for details).
 - **History.** The third Insights segment lists every finished task, grouped by the day it was completed, with the time finished and the focus time spent on it. Search, page back with "Show older", or **Restore to Today** from the row menu.
 - **Now Playing (optional, off by default).** A Spotify / Apple Music card with artwork, a tint taken from the cover, scrubbable progress and previous / play-pause / next. An optional chip with the cover and equalizer bars sits on the right shoulder of the notch, ahead of the timer pill. Turn both on in Settings.
-- **Cloud sync (invite only, optional).** Settings → Cloud sync signs in to a NotchCat server with a username and password; a new person first needs an **access key** from the server's owner. Tasks then sync between devices. Everything works offline and queues edits until the connection returns. See `docs/SYNC_PLAN.md` and the separate `notchcat-server` project.
+- **Cloud sync (invite only, optional).** Settings → Cloud sync signs in to a NotchCat server with a username and password; a new person first needs an **access key** from the server's owner. Tasks, the notepad, focus sessions and shared settings then sync between devices. Everything works offline and queues edits until the connection returns. If the notepad is edited on two devices at once, both versions are kept. See `docs/SYNC_PLAN.md` and the separate `notchcat-server` project.
 - **Battery.** The charge percentage sits beside the name in the tray header, with a bolt while charging and red when low and unplugged. It updates when the power state changes (no polling), hides itself on Macs without a battery, and can be switched off in Settings → Appearance.
+- **Updates.** When a newer release is on GitHub, an **Update available** button appears in the tray header and opens the releases page. It only asks GitHub for the latest release number (at launch and every few hours) and can be switched off in Settings → General.
 - **Settings.** Card visibility and order, Week / Insights tabs, countdown pill, default focus length, sounds, "Time's up" card, reminders and snooze length, hover-to-open, the ⌥N shortcut, paper grain, open at login, database backup, and quit.
 - **Fake notch for Macs without one.** Settings → Appearance → Fake notch draws either a black **Notch** flush with the top edge or a floating **Island** pill. The tray opens from it either way, and the timer pill and album chip line up beside it. Off by default, and hidden on Macs with a real notch.
 - Works on Macs without a notch (the tray opens top-center) even with the fake notch off.
@@ -96,7 +97,7 @@ Everything is stored in one SQLite database (WAL mode, no third-party packages):
 | --- | --- |
 | `tasks` | Title, done state, day, original planned day, order, time limit, reminder |
 | `task_sync` | Per-field edit times, unsent fields and delete markers, used by cloud sync |
-| `sync_meta` | Server address, signed-in username and sync cursor (the login itself is in the Keychain) |
+| `sync_meta` | Server address, signed-in username, sync cursor and note/settings sync state (the login itself is in the Keychain) |
 | `focus_sessions` | Each finished or abandoned session with the seconds it was really running |
 | `notes` | The notepad (one long-lived note; older per-day notes are kept and were merged into it once) |
 | `settings` | App settings as JSON |

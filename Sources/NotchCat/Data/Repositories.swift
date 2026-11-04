@@ -107,10 +107,48 @@ struct SessionRepository {
 
     func insert(_ s: FocusSession) {
         _ = try? db.run("""
-            INSERT INTO focus_sessions (task_id, started_at, active_seconds, planned_seconds, completed)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO focus_sessions (task_id, started_at, active_seconds, planned_seconds, completed, sync_id, pushed)
+            VALUES (?, ?, ?, ?, ?, ?, 0)
             """, [SQLValue(s.taskID?.uuidString), SQLValue(s.startedAt), .int(Int64(s.activeSeconds)),
-                  .int(Int64(s.plannedSeconds)), SQLValue(s.completed)])
+                  .int(Int64(s.plannedSeconds)), SQLValue(s.completed), .text(UUID().uuidString.lowercased())])
+    }
+
+    // MARK: Sync
+
+    func unsent(limit: Int) -> [(syncID: String, session: FocusSession)] {
+        let rows = try? db.query("""
+            SELECT sync_id, task_id, started_at, active_seconds, planned_seconds, completed
+            FROM focus_sessions WHERE pushed = 0 AND sync_id IS NOT NULL ORDER BY id LIMIT ?
+            """, [.int(Int64(limit))]) { r in
+            (r.text(0), FocusSession(taskID: r.optionalText(1).flatMap(UUID.init(uuidString:)), startedAt: r.date(2),
+                                     activeSeconds: r.int(3), plannedSeconds: r.int(4), completed: r.bool(5)))
+        }
+        return rows ?? []
+    }
+
+    func unsentCount() -> Int {
+        (try? db.scalarInt("SELECT COUNT(*) FROM focus_sessions WHERE pushed = 0 AND sync_id IS NOT NULL")) ?? 0
+    }
+
+    func markPushed(_ syncIDs: [String]) {
+        try? db.transaction {
+            for id in syncIDs { try db.run("UPDATE focus_sessions SET pushed = 1 WHERE sync_id = ?", [.text(id)]) }
+        }
+    }
+
+    /// Stores a session another device logged. Returns false if it was already here.
+    @discardableResult
+    func insertRemote(syncID: String, _ s: FocusSession) -> Bool {
+        let changed = try? db.run("""
+            INSERT OR IGNORE INTO focus_sessions (task_id, started_at, active_seconds, planned_seconds, completed, sync_id, pushed)
+            VALUES (?, ?, ?, ?, ?, ?, 1)
+            """, [SQLValue(s.taskID?.uuidString), SQLValue(s.startedAt), .int(Int64(s.activeSeconds)),
+                  .int(Int64(s.plannedSeconds)), SQLValue(s.completed), .text(syncID)])
+        return (changed ?? 0) > 0
+    }
+
+    func resetPushed() {
+        _ = try? db.run("UPDATE focus_sessions SET pushed = 0")
     }
 
     /// Seconds of focus that started in [from, to).

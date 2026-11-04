@@ -240,6 +240,16 @@ final class Database {
             key   TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
+        """,
+        // 3: focus sessions get a stable id (to sync) and a flag for "the server has this one".
+        // Existing rows get a random version-4 UUID each.
+        """
+        ALTER TABLE focus_sessions ADD COLUMN sync_id TEXT;
+        ALTER TABLE focus_sessions ADD COLUMN pushed INTEGER NOT NULL DEFAULT 0;
+        UPDATE focus_sessions SET sync_id = lower(
+            hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)), 2) || '-' ||
+            substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2) || '-' || hex(randomblob(6)));
+        CREATE UNIQUE INDEX idx_sessions_sync_id ON focus_sessions(sync_id);
         """
     ]
 

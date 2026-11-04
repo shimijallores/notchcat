@@ -54,42 +54,48 @@ enum JSONValue: Codable, Equatable {
 // MARK: - Wire format (see notchcat-server/app/schemas.py)
 
 struct WireChange: Codable {
+    let collection: String
     let id: String
     let fields: [String: JSONValue]
     let fieldTs: [String: Int64]
+    /// For the note only: the server version this edit was made on top of.
+    var baseSeq: Int?
 
-    enum CodingKeys: String, CodingKey { case id, fields, fieldTs = "field_ts" }
+    enum CodingKeys: String, CodingKey { case collection, id, fields, fieldTs = "field_ts", baseSeq = "base_seq" }
 }
 
 struct PushBody: Codable {
-    var tasks: [WireChange]
+    var changes: [WireChange]
 }
 
 struct WireRecord: Codable {
+    let collection: String
     let id: String
     let fields: [String: JSONValue]
     let fieldTs: [String: Int64]
     let seq: Int
 
-    enum CodingKeys: String, CodingKey { case id, fields, fieldTs = "field_ts", seq }
+    enum CodingKeys: String, CodingKey { case collection, id, fields, fieldTs = "field_ts", seq }
 }
 
 struct WireRejected: Codable {
+    let collection: String
     let id: String
     let reason: String
 }
 
 struct PushResult: Codable {
-    let tasks: [WireRecord]
+    let records: [WireRecord]
     let rejected: [WireRejected]
+    let conflicts: [WireRecord]
 }
 
 struct PullResult: Codable {
-    let tasks: [WireRecord]
+    let records: [WireRecord]
     let cursor: Int
     let hasMore: Bool
 
-    enum CodingKeys: String, CodingKey { case tasks, cursor, hasMore = "has_more" }
+    enum CodingKeys: String, CodingKey { case records, cursor, hasMore = "has_more" }
 }
 
 struct AuthUser: Codable {

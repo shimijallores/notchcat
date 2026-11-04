@@ -29,8 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Run after launch completes, so the settings sink below has already made its first (off) decision.
         if CommandLine.arguments.contains("--selftest-music") { DispatchQueue.main.async { SelfTest.music() } }
         let timer = FocusTimer.shared
-        let sessions = SessionRepository(db: .shared)
-        timer.sessionLogger = { sessions.insert($0) }
+        timer.sessionLogger = { SessionSync.shared.log($0) }
         // A focus session on a task that runs to the end completes that task.
         timer.onTaskSessionFinished = { TaskStore.shared.markDone($0) }
 

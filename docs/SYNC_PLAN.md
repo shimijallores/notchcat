@@ -1,7 +1,7 @@
 # NotchCat Sync & Accounts — Future Plan
 
-> Status: **pass 1 is built** (invite-only accounts and task sync, server in `../notchcat-server`, Mac client in
-> `Sources/NotchCat/Sync`). Notes, focus sessions, settings, iOS and Windows are still planned. Where this document
+> Status: **built** for the Mac: invite-only accounts, rate limiting, and sync of tasks, the notepad, focus sessions
+> and settings (server in `../notchcat-server`, Mac client in `Sources/NotchCat/Sync`). iOS and Windows are still planned. Where this document
 > and the server's README differ, the README describes what exists.
 
 ## Goal
@@ -101,16 +101,16 @@ See the server README for the current list. In short: `/v1/auth/{signup,login,re
 
 ## Rollout
 
-**Pass 1 (done):**
-- FastAPI + SQLAlchemy server (SQLite for tests, Postgres in production), access keys, accounts, task sync.
+**Done:**
+- FastAPI + SQLAlchemy server (SQLite for tests, Postgres in production), access keys, accounts, rate limits.
+- Sync of tasks, the notepad (with conflict handling that keeps both texts), focus sessions and shared settings.
 - Mac: a "Cloud sync" section in Settings, Keychain-stored login, a queue of unsent field edits, tombstones for
   deletes, background sync (after edits, every minute, and when the network returns).
 - Verified with an end-to-end test of two devices syncing through a live server (`--selftest-sync`).
 
 **Next:**
 - Deploy to the Azure VM (Postgres, TLS, a process manager) and make its address the app's default.
-- Rate limiting, Alembic migrations, backups.
-- Sync for the notepad, focus sessions and settings; note-body text merge.
+- Alembic migrations, backups.
 - **iOS client**, then **Windows client** (separate UI apps, same API).
 
 ## Open decisions

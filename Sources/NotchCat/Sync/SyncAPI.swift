@@ -46,7 +46,7 @@ struct SyncAPI {
     // MARK: Sync
 
     func push(_ changes: [WireChange], accessToken: String) async throws -> PushResult {
-        try await send("POST", "/v1/sync/push", body: PushBody(tasks: changes), token: accessToken)
+        try await send("POST", "/v1/sync/push", body: PushBody(changes: changes), token: accessToken)
     }
 
     func pull(cursor: Int, accessToken: String) async throws -> PullResult {

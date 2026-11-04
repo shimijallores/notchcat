@@ -23,6 +23,7 @@ struct InsightsView: View {
         }
         .onAppear { model.reload(); history.reload() }
         .onReceive(store.$tasks) { _ in model.reload(); history.reload() }
+        .onReceive(SessionSync.shared.remoteChange) { _ in model.reload(); history.reload() }
     }
 
     // MARK: - Left: summary

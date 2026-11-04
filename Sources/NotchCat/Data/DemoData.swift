@@ -254,8 +254,12 @@ extension SelfTest {
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         let dbA = try! Database(path: "\(dir)/a.sqlite"), dbB = try! Database(path: "\(dir)/b.sqlite")
         let a = TaskStore(db: dbA), b = TaskStore(db: dbB)
-        let ea = SyncEngine(store: a, db: dbA, keychainAccount: "test-a")
-        let eb = SyncEngine(store: b, db: dbB, keychainAccount: "test-b")
+        let noteA = NoteStore(db: dbA), noteB = NoteStore(db: dbB)
+        let logA = SessionSync(db: dbA), logB = SessionSync(db: dbB)
+        let prefsA = AppSettings(db: dbA), prefsB = AppSettings(db: dbB)
+        let ea = SyncEngine(sources: [a, noteA, logA, SettingsSync(settings: prefsA, db: dbA)], db: dbA, keychainAccount: "test-a")
+        let eb = SyncEngine(sources: [b, noteB, logB, SettingsSync(settings: prefsB, db: dbB)], db: dbB, keychainAccount: "test-b")
+        func sessionCount(_ db: Database) -> Int { (try? db.scalarInt("SELECT COUNT(*) FROM focus_sessions")) ?? -1 }
         ea.serverText = server
         eb.serverText = server
 
@@ -266,6 +270,9 @@ extension SelfTest {
 
         // Accounts
         a.add(title: "Existing before signing in", day: .today)    // a task from before the account existed
+        noteA.text = "A wrote this before signing in"             // so did both notes
+        noteB.text = "B wrote this before signing in"
+        logA.log(FocusSession(taskID: nil, startedAt: Date().addingTimeInterval(-7200), activeSeconds: 1500, plannedSeconds: 1500, completed: true))
         do { try await ea.signUp(accessKey: "NC-AAAA-AAAA-AAAA-AAAA", username: user, password: "correct horse"); check("bad key refused", false) }
         catch { check("bad key refused", (error as? APIError)?.status == 403, "\(error)") }
         do { try await ea.signUp(accessKey: key, username: user, password: "correct horse"); check("sign up with key", ea.username == user) }
@@ -317,6 +324,45 @@ extension SelfTest {
         a.moveVisible(day: .today, from: IndexSet(integer: a.visibleTasks(for: .today).count - 1), to: 0)
         await ea.syncNow(); await eb.syncNow()
         check("reorder syncs", a.tasks.map(\.title) == b.tasks.map(\.title), "\(titles(a)) vs \(titles(b))")
+
+        // Notes: both devices had text before the account existed; neither may be lost
+        await ea.syncNow(); await eb.syncNow(); await ea.syncNow()
+        check("both pre-existing notes survive", noteA.text.contains("A wrote this") && noteA.text.contains("B wrote this"), noteA.text)
+        check("devices end on the same note", noteA.text == noteB.text, "A=\(noteA.text.debugDescription) B=\(noteB.text.debugDescription)")
+
+        await pause(); noteA.text += "\nplain addition on A"
+        await ea.syncNow(); await eb.syncNow()
+        check("a note edit reaches the other device", noteB.text == noteA.text && noteB.text.hasSuffix("plain addition on A"))
+
+        // Simultaneous edits to the same note: neither device's words are overwritten
+        await pause(); noteA.text += "\nA offline line"
+        await pause(); noteB.text += "\nB offline line"
+        await eb.syncNow(); await ea.syncNow(); await eb.syncNow(); await ea.syncNow()
+        check("simultaneous note edits keep both", noteA.text.contains("A offline line") && noteA.text.contains("B offline line"), noteA.text)
+        check("and both devices agree", noteA.text == noteB.text, "A=\(noteA.text.debugDescription) B=\(noteB.text.debugDescription)")
+
+        await pause(); noteB.text = ""
+        await eb.syncNow(); await ea.syncNow()
+        check("clearing the note syncs", noteA.text.isEmpty)
+
+        // Focus sessions
+        check("session logged before sign-in reached B", sessionCount(dbB) == 1, "B has \(sessionCount(dbB))")
+        logB.log(FocusSession(taskID: task(b, "Third")?.id, startedAt: Date(), activeSeconds: 600, plannedSeconds: 1500, completed: false))
+        await eb.syncNow(); await ea.syncNow(); await eb.syncNow(); await ea.syncNow()
+        check("a session logged on B reaches A, once", sessionCount(dbA) == 2 && sessionCount(dbB) == 2, "A=\(sessionCount(dbA)) B=\(sessionCount(dbB))")
+
+        // Settings: shared ones sync, per-device ones stay put
+        await pause(); prefsA.data.snoozeMinutes = 12; prefsA.data.paperGrain = false; prefsA.data.hoverToOpen = false
+        await pause(); prefsB.data.defaultFocusMinutes = 45; prefsB.setEnabled(.music, true)
+        await ea.syncNow(); await eb.syncNow(); await ea.syncNow()
+        check("shared settings sync both ways",
+              prefsB.data.snoozeMinutes == 12 && prefsB.data.paperGrain == false && prefsA.data.defaultFocusMinutes == 45
+                && prefsA.isEnabled(.music), "B snooze=\(prefsB.data.snoozeMinutes) A focus=\(prefsA.data.defaultFocusMinutes)")
+        check("per-device settings stay local", prefsA.data.hoverToOpen == false && prefsB.data.hoverToOpen == true)
+        await pause(); prefsA.data.snoozeMinutes = 20
+        await pause(); prefsB.data.snoozeMinutes = 30
+        await ea.syncNow(); await eb.syncNow(); await ea.syncNow()
+        check("newest settings edit wins", prefsA.data.snoozeMinutes == 30 && prefsB.data.snoozeMinutes == 30, "A=\(prefsA.data.snoozeMinutes) B=\(prefsB.data.snoozeMinutes)")
 
         // Restart: a fresh store and engine reading the same database must not resend or lose anything
         let a2 = TaskStore(db: dbA)
