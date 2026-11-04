@@ -31,13 +31,13 @@ struct SettingsView: View {
                     tabsSection
                     openingSection
                     appearanceSection
+                    generalSection
                 }
                 VStack(spacing: 10) {
                     timerSection
                     remindersSection
                     musicSection
                     cardsSection
-                    generalSection
                 }
             }
             .padding(.bottom, 4)
