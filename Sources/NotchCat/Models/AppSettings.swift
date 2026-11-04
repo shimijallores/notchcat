@@ -90,6 +90,7 @@ struct SettingsData: Codable, Equatable {
     // Appearance
     var paperGrain = true
     var fakeNotch = FakeNotchStyle.off
+    var showBattery = true
 
     init() {}
 
@@ -111,6 +112,7 @@ struct SettingsData: Codable, Equatable {
         paperGrain = try c.decodeIfPresent(Bool.self, forKey: .paperGrain) ?? d.paperGrain
         showMusicChip = try c.decodeIfPresent(Bool.self, forKey: .showMusicChip) ?? d.showMusicChip
         fakeNotch = (try? c.decode(FakeNotchStyle.self, forKey: .fakeNotch)) ?? d.fakeNotch
+        showBattery = try c.decodeIfPresent(Bool.self, forKey: .showBattery) ?? d.showBattery
         normalizeCards()
     }
 

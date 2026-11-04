@@ -20,6 +20,7 @@ Native macOS app, SwiftUI + AppKit, SQLite storage. Local-first: your data never
 - **Insights.** "Momentum is building" summary, tasks completed vs planned, focus time, and a 7-day stacked bar chart (Tasks / Focus toggle, step back through earlier weeks, tap a bar for details).
 - **History.** The third Insights segment lists every finished task, grouped by the day it was completed, with the time finished and the focus time spent on it. Search, page back with "Show older", or **Restore to Today** from the row menu.
 - **Now Playing (optional, off by default).** A Spotify / Apple Music card with artwork, a tint taken from the cover, scrubbable progress and previous / play-pause / next. An optional chip with the cover and equalizer bars sits on the right shoulder of the notch, ahead of the timer pill. Turn both on in Settings.
+- **Battery.** The charge percentage sits beside the name in the tray header, with a bolt while charging and red when low and unplugged. It updates when the power state changes (no polling), hides itself on Macs without a battery, and can be switched off in Settings → Appearance.
 - **Settings.** Card visibility and order, Week / Insights tabs, countdown pill, default focus length, sounds, "Time's up" card, reminders and snooze length, hover-to-open, the ⌥N shortcut, paper grain, open at login, database backup, and quit.
 - **Fake notch for Macs without one.** Settings → Appearance → Fake notch draws either a black **Notch** flush with the top edge or a floating **Island** pill. The tray opens from it either way, and the timer pill and album chip line up beside it. Off by default, and hidden on Macs with a real notch.
 - Works on Macs without a notch (the tray opens top-center) even with the fake notch off.
@@ -108,7 +109,7 @@ Sources/NotchCat/
   App/      main.swift, AppDelegate (hotkey, menu-bar item, dev flags)
   Data/     Database (SQLite wrapper + migrations), Repositories, DemoData (dev only)
   Models/   TaskStore, NoteStore, FocusTimer, AppSettings, ReminderScheduler,
-            CalendarStore (EventKit), InsightsModel, HistoryModel, MusicService
+            CalendarStore (EventKit), InsightsModel, HistoryModel, MusicService, BatteryMonitor
   Notch/    NotchController (hover / click-away / islands / sizing), NotchGeometry,
             NotchPanels, DropContainerView (Core Animation silhouette), HotKey
   Views/    RootView (tabs, workspace, banner, modals), TasksCard, TimerCard, NotepadCard,

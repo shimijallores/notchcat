@@ -98,6 +98,7 @@ struct WorkspaceView: View {
 struct HeaderBar: View {
     @ObservedObject var ui: PanelUIState
     @ObservedObject var settings: AppSettings
+    @ObservedObject private var battery = BatteryMonitor.shared
 
     private var tabs: [PanelTab] {
         PanelTab.allCases.filter {
@@ -116,6 +117,9 @@ struct HeaderBar: View {
                 Text("NotchCat")
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.92))
+                if settings.data.showBattery, let status = battery.status {
+                    BatteryView(status: status).padding(.leading, 12)
+                }
             }
 
             Spacer(minLength: ui.notchWidth + 24)
@@ -150,6 +154,38 @@ struct HeaderBar: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Battery icon and percentage, e.g. "82%". A bolt while charging; red when low and unplugged.
+struct BatteryView: View {
+    let status: BatteryMonitor.Status
+
+    private var symbol: String {
+        if status.isCharging { return "battery.100percent.bolt" }
+        switch status.percent {
+        case 88...: return "battery.100percent"
+        case 63...: return "battery.75percent"
+        case 38...: return "battery.50percent"
+        case 13...: return "battery.25percent"
+        default: return "battery.0percent"
+        }
+    }
+
+    private var tint: Color {
+        if status.isLow { return Color(red: 1, green: 0.42, blue: 0.4) }
+        return status.isCharging ? Color(red: 0.45, green: 0.9, blue: 0.55) : .white.opacity(0.7)
+    }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: symbol).font(.system(size: 12, weight: .medium))
+            Text("\(status.percent)%").font(.system(size: 11.5, weight: .semibold, design: .rounded)).monospacedDigit()
+        }
+        .foregroundStyle(tint)
+        .help(status.isCharging ? "Charging" : (status.onACPower ? "Plugged in" : "On battery"))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Battery \(status.percent) percent\(status.isCharging ? ", charging" : "")")
     }
 }
 

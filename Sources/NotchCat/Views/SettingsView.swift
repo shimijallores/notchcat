@@ -68,6 +68,7 @@ struct SettingsView: View {
                 footer: NotchGeometry.hasHardwareNotch ? nil
                     : "For Macs without a notch. Notch draws a black notch at the top of the screen; Island draws a floating pill. The tray opens from it either way.") {
             toggleRow("Paper grain on cards", "circle.grid.3x3", settings.binding(\.paperGrain))
+            toggleRow("Battery percentage in the tray", "battery.75percent", settings.binding(\.showBattery))
             if !NotchGeometry.hasHardwareNotch {
                 HStack(spacing: 8) {
                     Image(systemName: "rectangle.topthird.inset.filled").font(.system(size: 11, weight: .semibold)).frame(width: 16).opacity(0.7)
