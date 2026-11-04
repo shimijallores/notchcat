@@ -57,13 +57,6 @@ struct EventsCard: View {
             Image(systemName: "calendar").font(.system(size: 11, weight: .semibold))
             Text("Today").font(.system(size: 12, weight: .semibold, design: .rounded))
             Spacer(minLength: 0)
-            if calendar.access == .authorized {
-                HStack(spacing: 4) {
-                    Circle().fill(Color(red: 0.2, green: 0.62, blue: 0.35)).frame(width: 6, height: 6)
-                    Text("Connected").font(.system(size: 10.5, weight: .semibold))
-                }
-                .opacity(0.8)
-            }
         }
         .opacity(0.85)
     }
@@ -109,7 +102,9 @@ struct EventsCard: View {
     @ViewBuilder
     private var emptyState: some View {
         VStack(spacing: 6) {
-            Image(systemName: "sparkles").font(.system(size: 18)).opacity(0.5)
+            Image(systemName: calendar.access == .authorized ? "calendar.badge.checkmark" : "calendar")
+                .font(.system(size: 26, weight: .light))
+                .opacity(0.45)
             Text(calendar.access == .authorized ? "Nothing scheduled today." : "No reminders today.")
                 .font(.system(size: 12, weight: .medium)).opacity(0.6)
         }

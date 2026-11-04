@@ -99,6 +99,7 @@ struct HeaderBar: View {
     @ObservedObject var ui: PanelUIState
     @ObservedObject var settings: AppSettings
     @ObservedObject private var battery = BatteryMonitor.shared
+    @ObservedObject private var updates = UpdateChecker.shared
 
     private var tabs: [PanelTab] {
         PanelTab.allCases.filter {
@@ -119,6 +120,24 @@ struct HeaderBar: View {
                     .foregroundStyle(.white.opacity(0.92))
                 if settings.data.showBattery, let status = battery.status {
                     BatteryView(status: status).padding(.leading, 12)
+                }
+                if settings.data.checkForUpdates, let release = updates.available {
+                    Button {
+                        updates.openReleasePage()
+                        ui.close()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.down.circle.fill").font(.system(size: 10.5))
+                            Text("Update available").font(.system(size: 11, weight: .semibold, design: .rounded))
+                        }
+                        .foregroundStyle(Theme.ink)
+                        .padding(.horizontal, 9).padding(.vertical, 3.5)
+                        .background(Capsule().fill(Theme.amber))
+                        .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.leading, 12)
+                    .help("NotchCat \(release.version) is out. Opens the download page on GitHub.")
                 }
             }
 

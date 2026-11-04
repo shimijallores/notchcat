@@ -289,29 +289,21 @@ private struct Badge: View {
 
 private struct ActiveBadge: View {
     let state: FocusTimer.State
-    @State private var pulse = false
 
     var body: some View {
         HStack(spacing: 4) {
-            Circle()
-                .fill(color)
-                .frame(width: 6, height: 6)
-                .scaleEffect(state == .running && pulse ? 1.35 : 1)
-                .opacity(state == .running && pulse ? 0.6 : 1)
+            Circle().fill(color).frame(width: 6, height: 6)
             Text(label).font(.system(size: 10, weight: .semibold, design: .rounded))
         }
         .padding(.horizontal, 7).padding(.vertical, 2)
         .background(Capsule().fill(Theme.ink))
         .foregroundStyle(.white)
-        .onAppear {
-            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { pulse = true }
-        }
     }
 
     private var color: Color { state == .finished ? Theme.amber : (state == .paused ? .gray : Color(red: 0.4, green: 0.9, blue: 0.5)) }
     private var label: String {
         switch state {
-        case .running: return "Active session"
+        case .running: return "Active"
         case .paused: return "Paused"
         case .finished: return "Time's up"
         case .idle: return ""

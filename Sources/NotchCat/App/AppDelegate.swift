@@ -17,6 +17,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if CommandLine.arguments.contains("--seed-demo") { DemoData.seed(into: .shared) }
         if CommandLine.arguments.contains("--selftest-note") { SelfTest.noteConversion(); exit(0) }
         if CommandLine.arguments.contains("--selftest-settings") { SelfTest.settings(); exit(0) }
+        if CommandLine.arguments.contains("--selftest-update") {
+            Task { await SelfTest.update(); exit(0) }
+            return
+        }
         if CommandLine.arguments.contains("--selftest-sync") {
             Task { exit(await SelfTest.sync() ? 0 : 1) }
             return
@@ -32,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         controller = NotchController()
         SyncEngine.shared.start()
+        UpdateChecker.shared.start()
         // Needs the finish callback wired above, so it runs after it.
         if CommandLine.arguments.contains("--selftest-focus") { DispatchQueue.main.async { SelfTest.focusCompletion() } }
 

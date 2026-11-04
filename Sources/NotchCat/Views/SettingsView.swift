@@ -131,6 +131,18 @@ struct SettingsView: View {
             if let loginError {
                 Text(loginError).font(.system(size: 10.5)).foregroundStyle(.red.opacity(0.85))
             }
+            if UpdateChecker.shared.currentVersion != nil {
+                toggleRow("Tell me about new versions", "arrow.down.circle", Binding(
+                    get: { settings.data.checkForUpdates },
+                    set: { on in
+                        settings.data.checkForUpdates = on
+                        Task { await UpdateChecker.shared.check() }
+                    }))
+                if let version = UpdateChecker.shared.currentVersion {
+                    Text("NotchCat \(version). Checks GitHub for new releases; nothing else is sent.")
+                        .font(.system(size: 10.5)).opacity(0.45)
+                }
+            }
             actionRow("Back up database", "externaldrive") { backup() }
             if let backupMessage {
                 Text(backupMessage).font(.system(size: 10.5)).opacity(0.6)

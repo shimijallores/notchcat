@@ -333,3 +333,31 @@ extension SelfTest {
         return failures == 0
     }
 }
+
+// MARK: - Update check (`--selftest-update`)
+
+extension SelfTest {
+    static func update() async {
+        let cases: [(String, String, Bool)] = [
+            ("v1.0.4", "1.0.3", true), ("1.0.3", "1.0.3", false), ("v1.0.10", "1.0.9", true), ("1.1", "1.0.9", true),
+            ("v2", "1.9.9", true), ("1.0.2", "1.0.3", false), ("garbage", "1.0.3", false), ("v1.0.4-beta", "1.0.3", true),
+            ("", "1.0.3", false), ("1.0.3.1", "1.0.3", true),
+        ]
+        var bad = 0
+        for (remote, local, want) in cases {
+            let got = UpdateChecker.isNewer(remote, than: local)
+            if got != want { bad += 1 }
+            print("\(got == want ? "PASS" : "FAIL")  \(remote.isEmpty ? "(empty)" : remote) vs \(local) -> newer=\(got)")
+        }
+        let hostile = #"{"tag_name":"v9.9.9","html_url":"https://evil.example/phish","draft":false,"prerelease":false}"#
+        let r1 = UpdateChecker.release(from: Data(hostile.utf8), newerThan: "1.0.3")
+        print("\(r1?.url.host == "github.com" ? "PASS" : "FAIL")  foreign link in the response is ignored -> \(r1?.url.absoluteString ?? "nil")")
+        let pre = #"{"tag_name":"v9.9.9","html_url":"https://github.com/shimijallores/notchcat/releases/tag/v9.9.9","prerelease":true}"#
+        print("\(UpdateChecker.release(from: Data(pre.utf8), newerThan: "1.0.3") == nil ? "PASS" : "FAIL")  pre-releases are ignored")
+        let ok = #"{"tag_name":"v1.0.4","html_url":"https://github.com/shimijallores/notchcat/releases/tag/v1.0.4"}"#
+        print("\(UpdateChecker.release(from: Data(ok.utf8), newerThan: "1.0.3")?.url.lastPathComponent == "v1.0.4" ? "PASS" : "FAIL")  release link kept")
+        await UpdateChecker.shared.check()
+        print("check() with NOTCHCAT_UPDATE_URL=\(ProcessInfo.processInfo.environment["NOTCHCAT_UPDATE_URL"] ?? "-"), version=\(UpdateChecker.shared.currentVersion ?? "-") -> available=\(UpdateChecker.shared.available?.version ?? "none")")
+        if bad > 0 { print("\(bad) FAILED") }
+    }
+}

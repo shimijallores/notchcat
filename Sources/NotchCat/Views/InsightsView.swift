@@ -31,7 +31,7 @@ struct InsightsView: View {
         let s = model.summary
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
-                Image(systemName: "sparkles").font(.system(size: 11, weight: .semibold))
+                Image(systemName: "calendar").font(.system(size: 11, weight: .semibold))
                 Text("This week").font(.system(size: 12, weight: .semibold, design: .rounded))
             }
             .opacity(0.75)
