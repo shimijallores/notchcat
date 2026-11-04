@@ -368,7 +368,7 @@ private struct AccountForm: View {
             .padding(2)
             .background(Capsule().fill(.white.opacity(0.08)))
 
-            field("Server", text: $sync.serverText, prompt: "https://sync.example.com")
+            field("Server", text: $sync.serverText, prompt: SyncEngine.defaultServer)
             if creating { field("Access key", text: $accessKey, prompt: "NC-XXXX-XXXX-XXXX-XXXX") }
             field("Username", text: $username, prompt: creating ? "Choose a username" : "Username")
             secureField

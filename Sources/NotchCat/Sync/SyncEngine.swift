@@ -21,6 +21,9 @@ final class SyncEngine: ObservableObject {
         case revoked
     }
 
+    /// The NotchCat server. Sign-up there needs an access key from its owner, so a public default is harmless.
+    static let defaultServer = "https://40-82-138-100.sslip.io"
+
     @Published private(set) var phase: Phase = .signedOut
     @Published private(set) var username: String?
     @Published private(set) var lastSync: Date?
@@ -43,7 +46,7 @@ final class SyncEngine: ObservableObject {
         self.sources = sources
         meta = SyncMetaRepository(db: db)
         keychain = KeychainStore(service: KeychainStore.defaultService, account: keychainAccount)
-        serverText = meta.get("server_url") ?? ProcessInfo.processInfo.environment["NOTCHCAT_SERVER"] ?? ""
+        serverText = meta.get("server_url") ?? ProcessInfo.processInfo.environment["NOTCHCAT_SERVER"] ?? Self.defaultServer
         cursor = Int(meta.get("cursor") ?? "") ?? 0
         username = meta.get("username")
         if username != nil, keychain.read() != nil { phase = .idle }
