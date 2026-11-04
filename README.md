@@ -12,9 +12,9 @@ Native macOS app, SwiftUI + AppKit, SQLite storage. Local-first: your data never
   - The footer shows an estimate for the tasks that have a time limit: when you would finish if you started now, and the total, e.g. `5:41pm (1h 40m)` (local time). Tasks without a limit are ignored, and nothing shows if none have one.
   - Row menu: Focus, Mark as Done, Rename, Set Time Limit, **Remind Me**, Move to Tomorrow, Duplicate, Delete.
 - **Remind Me.** Presets (30 min, 1 hour, this evening, tomorrow morning) or a custom date and time. When it fires, the notch drops a card with the task, **zZ snooze** and **✓ Done**. If the tray is already open it appears as a banner instead.
-- **Focus timer.** Seven-segment clock, Start / Pause / Reset, and a duration popover. **Focus** on a task attaches the session to it. The timer pauses while the Mac sleeps.
+- **Focus timer.** Seven-segment clock, Start / Pause / Reset, and a duration popover. **Focus** on a task attaches the session to it, and the task is marked done when the timer reaches 00:00. The timer pauses while the Mac sleeps.
 - **Menu-bar pill.** With a session running and the tray closed, a dot-matrix countdown sits on the right shoulder of the notch. When time is up, the notch drops a "Time's up" card with **+5 min** and **Done**.
-- **Notepad.** One long-lived note for ideas that is never reset, autosaved, with a word count. **⌘↵** turns the line under the cursor into a task and marks it ✓.
+- **Notepad.** One long-lived note for ideas that is never reset, autosaved, with a word count. **⌘↵** moves the line under the cursor into Today's tasks and removes it from the note (⌘Z brings it back).
 - **Events.** Today's Apple Calendar events (read-only) merged with your timed reminders, with "Happening now". Calendar access is optional and only requested when you press Connect.
 - **Week.** The next seven days as columns. Drag a task onto any day to re-plan it, or add one in place.
 - **Insights.** "Momentum is building" summary, tasks completed vs planned, focus time, and a 7-day stacked bar chart (Tasks / Focus toggle, step back through earlier weeks, tap a bar for details).
@@ -135,7 +135,7 @@ Pass these to `build/NotchCat.app/Contents/MacOS/NotchCat`. Set `NOTCHCAT_DB=/tm
 | `--seed-demo` | Fill the test database with two weeks of sample history |
 | `--remind-in S` | Add a task with a reminder S seconds out |
 | `--snapshot DIR` | Render each tab, the modal and the pill to PNGs, then quit |
-| `--selftest-note`, `--selftest-settings`, `--selftest-music` | Run non-UI checks and quit |
+| `--selftest-note`, `--selftest-settings`, `--selftest-music`, `--selftest-focus` | Run non-UI checks and quit |
 | `--fake-music` | Show a fake playing track (no Spotify / Music needed) |
 | `--fake-notch off\|notch\|island` | Set the fake notch style (needs `NOTCHCAT_DB`) |
 | `NOTCHCAT_FORCE_NO_NOTCH=1` (env) | Treat a notched screen as notch-less, to test the fake notch |

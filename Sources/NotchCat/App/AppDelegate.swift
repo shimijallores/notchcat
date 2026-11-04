@@ -23,8 +23,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let timer = FocusTimer.shared
         let sessions = SessionRepository(db: .shared)
         timer.sessionLogger = { sessions.insert($0) }
+        // A focus session on a task that runs to the end completes that task.
+        timer.onTaskSessionFinished = { TaskStore.shared.markDone($0) }
 
         controller = NotchController()
+        // Needs the finish callback wired above, so it runs after it.
+        if CommandLine.arguments.contains("--selftest-focus") { DispatchQueue.main.async { SelfTest.focusCompletion() } }
 
         // Music: only listen (and ever talk to Spotify / Music) while the card or chip is switched on.
         // (@Published fires before the value changes, so compute from the value it hands us.)

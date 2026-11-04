@@ -131,12 +131,18 @@ final class NoteTextView: NSTextView {
         if raw.hasSuffix("\n") { contentRange.length -= 1 }
 
         let line = ns.substring(with: contentRange).trimmingCharacters(in: .whitespaces)
-        // Lines already marked ✓ were converted before; don't create duplicates.
+        // Lines marked ✓ by older versions were converted already; don't create duplicates.
         guard !line.isEmpty, !line.hasPrefix("✓"), onConvertLine?(line) == true else { return }
 
-        let replacement = "✓ " + line
-        if shouldChangeText(in: contentRange, replacementString: replacement) {
-            replaceCharacters(in: contentRange, with: replacement)
+        // The line now lives in Tasks, so remove it from the note (undo brings it back).
+        var removal = lineRange
+        if !raw.hasSuffix("\n"), removal.location > 0 {
+            // Last line has no newline of its own: take the one before it so no blank line is left behind.
+            removal.location -= 1
+            removal.length += 1
+        }
+        if shouldChangeText(in: removal, replacementString: "") {
+            replaceCharacters(in: removal, with: "")
             didChangeText()
         }
     }

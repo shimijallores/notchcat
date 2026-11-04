@@ -29,6 +29,8 @@ final class FocusTimer: ObservableObject {
 
     /// Called when a session ends (finished or abandoned) so Insights can count it.
     var sessionLogger: ((FocusSession) -> Void)?
+    /// Called with the linked task when a session runs all the way to 00:00 (not when it is abandoned).
+    var onTaskSessionFinished: ((UUID) -> Void)?
     private var sessionStartedAt: Date?
     private var activeAccumulated: TimeInterval = 0
     private var lastResumeAt: Date?
@@ -68,11 +70,11 @@ final class FocusTimer: ObservableObject {
     }
 
     /// Developer helper: a session of arbitrary length in seconds.
-    func startDemo(seconds: Int) {
+    func startDemo(seconds: Int, taskID: UUID? = nil) {
         reset()
         sessionTotal = seconds
         remaining = seconds
-        start()
+        start(taskID: taskID)
     }
 
     func toggle() {
@@ -179,6 +181,7 @@ final class FocusTimer: ObservableObject {
         pausedRemaining = 0
         endTracking(completed: true)
         state = .finished
+        if let id = linkedTaskID { onTaskSessionFinished?(id) }
         if AppSettings.shared.data.timerSound { NSSound(named: NSSound.Name("Glass"))?.play() }
     }
 

@@ -77,6 +77,15 @@ final class TaskStore: ObservableObject {
         }
     }
 
+    /// Marks a task done. Unlike `toggleDone`, doing it twice leaves it done.
+    func markDone(_ id: UUID) {
+        guard let task = task(id: id), !task.isDone else { return }
+        update(id) {
+            $0.isDone = true
+            $0.completedAt = Date()
+        }
+    }
+
     /// Brings a finished task back onto today's list.
     func restore(_ id: UUID) {
         let today = self.today

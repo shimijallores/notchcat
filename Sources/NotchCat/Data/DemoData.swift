@@ -84,11 +84,10 @@ enum SelfTest {
         }
         cmdReturn(atLine: "Buy milk")
         cmdReturn(atLine: "Call dentist")
-        cmdReturn(atLine: "Buy milk")          // already converted: must not duplicate
         cmdReturn(atLine: "✓ already done")    // pre-marked: must be ignored
         cmdReturn(atLine: "Last line")         // no trailing newline
-        // blank line
-        tv.setSelectedRange(NSRange(location: (tv.string as NSString).range(of: "dentist\n\n").location + 9, length: 0))
+        // blank line (the converted lines are gone, so the empty line is now first)
+        tv.setSelectedRange(NSRange(location: 0, length: 0))
         let blank = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0, windowNumber: 0,
                                      context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36)!
         tv.keyDown(with: blank)
@@ -96,6 +95,42 @@ enum SelfTest {
         print("created tasks: \(created)")
         print("text now: \(tv.string.debugDescription)")
         print("tasks in store: \(store.tasks.map(\.title))")
+    }
+
+    /// `--selftest-focus`: a session on a task that runs to 00:00 completes that task; an abandoned one does not.
+    static func focusCompletion() {
+        guard ProcessInfo.processInfo.environment["NOTCHCAT_DB"] != nil else { return }
+        let store = TaskStore.shared
+        let timer = FocusTimer.shared
+        store.add(title: "Finishes", day: .today)
+        store.add(title: "Abandoned", day: .today)
+        store.add(title: "No task", day: .today)
+        let finishes = store.tasks.first { $0.title == "Finishes" }!.id
+        let abandoned = store.tasks.first { $0.title == "Abandoned" }!.id
+
+        func status(_ title: String) -> String {
+            guard let t = store.tasks.first(where: { $0.title == title }) else { return "missing" }
+            return t.isDone ? "done(completedAt set: \(t.completedAt != nil))" : "open"
+        }
+
+        timer.startDemo(seconds: 60, taskID: abandoned)
+        timer.reset()                                  // abandoned before the end
+        print("abandoned session:  \(status("Abandoned"))")
+
+        timer.startDemo(seconds: 1)                    // no task attached
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+            print("no-task session:    task list unchanged -> \(store.tasks.filter(\.isDone).count) done")
+            timer.reset()
+            timer.startDemo(seconds: 1, taskID: finishes)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+                print("finished session:   \(status("Finishes"))")
+                let before = store.tasks.first { $0.id == finishes }?.completedAt
+                store.markDone(finishes)               // doing it again must not undo or re-stamp
+                let after = store.tasks.first { $0.id == finishes }
+                print("markDone twice:     isDone=\(after?.isDone ?? false) sameStamp=\(after?.completedAt == before)")
+                exit(0)
+            }
+        }
     }
 
     static func settings() {
