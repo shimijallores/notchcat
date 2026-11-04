@@ -103,13 +103,14 @@ See the server README for the current list. In short: `/v1/auth/{signup,login,re
 
 **Done:**
 - FastAPI + SQLAlchemy server (SQLite for tests, Postgres in production), access keys, accounts, rate limits.
+- Deployed on an Azure VM at https://api.notchcat.cloud (Caddy HTTPS, systemd, nightly backups).
 - Sync of tasks, the notepad (with conflict handling that keeps both texts), focus sessions and shared settings.
 - Mac: a "Cloud sync" section in Settings, Keychain-stored login, a queue of unsent field edits, tombstones for
   deletes, background sync (after edits, every minute, and when the network returns).
 - Verified with an end-to-end test of two devices syncing through a live server (`--selftest-sync`).
 
 **Next:**
-- Deploy to the Azure VM (Postgres, TLS, a process manager) and make its address the app's default.
+- Move the server to a more durable host than the student VM before many people depend on it.
 - Alembic migrations, backups.
 - **iOS client**, then **Windows client** (separate UI apps, same API).
 
@@ -118,4 +119,3 @@ See the server README for the current list. In short: `/v1/auth/{signup,login,re
 - Final hosting once there are many users (the Azure student VM is a starting point only).
 - Whether to share a portable core across platforms later, or rebuild each client's UI natively against the shared
   API (current lean: native UI per platform, shared API).
-- Domain name for the API.

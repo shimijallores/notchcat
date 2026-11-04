@@ -22,7 +22,7 @@ final class SyncEngine: ObservableObject {
     }
 
     /// The NotchCat server. Sign-up there needs an access key from its owner, so a public default is harmless.
-    static let defaultServer = "https://40-82-138-100.sslip.io"
+    static let defaultServer = "https://api.notchcat.cloud"
 
     @Published private(set) var phase: Phase = .signedOut
     @Published private(set) var username: String?
