@@ -55,7 +55,7 @@ From Xcode, open `Package.swift`, pick the **NotchCat** scheme and press ⌘R. S
 
 | Action | How |
 | --- | --- |
-| Open the tray | Hover the notch, press **⌥N**, click the pill, or use the menu-bar cat |
+| Open the tray | Hover the notch (or click it, if switched on in Settings), press **⌥N**, click the pill, or use the menu-bar cat |
 | Keep it open | Click inside it |
 | Close it | Click outside, press **Esc**, or press **⌥N** again |
 | Quit | Settings → Quit NotchCat, or the menu-bar cat |

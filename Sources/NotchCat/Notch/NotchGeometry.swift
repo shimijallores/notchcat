@@ -80,6 +80,9 @@ struct NotchGeometry {
                width: notchRect.width + 12, height: notchRect.height + 40)
     }
 
+    /// The notch itself: where a click opens the panel. Tighter than `hoverRect`, which reaches into other apps' windows.
+    var clickRect: NSRect { notchRect.insetBy(dx: -6, dy: -2) }
+
     /// Widest the tray may get on this screen.
     var maxPanelWidth: CGFloat { min(screen.frame.width * 0.74, 1120) }
 

@@ -76,14 +76,13 @@ struct SettingsView: View {
     private var openingSection: some View {
         Section(title: "Opening") {
             toggleRow("Open when I hover the notch", "cursorarrow.motionlines", settings.binding(\.hoverToOpen))
+            toggleRow("Open when I click the notch", "cursorarrow.click", settings.binding(\.clickToOpen))
             toggleRow("Option-N shortcut", "command", settings.binding(\.hotkeyEnabled))
         }
     }
 
     private var appearanceSection: some View {
-        Section(title: "Appearance",
-                footer: NotchGeometry.hasHardwareNotch ? nil
-                    : "For Macs without a notch. Notch draws a black notch at the top of the screen; Island draws a floating pill. The tray opens from it either way.") {
+        Section(title: "Appearance") {
             toggleRow("Paper grain on cards", "circle.grid.3x3", settings.binding(\.paperGrain))
             toggleRow("Battery percentage in the tray", "battery.75percent", settings.binding(\.showBattery))
             if !NotchGeometry.hasHardwareNotch {

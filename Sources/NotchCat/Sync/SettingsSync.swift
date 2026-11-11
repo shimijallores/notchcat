@@ -3,7 +3,7 @@ import Combine
 
 /// The preferences that mean the same on every device. Each syncs on its own, newest edit winning.
 ///
-/// Deliberately left out because they describe this Mac, not the person: the Option-N shortcut, hover-to-open,
+/// Deliberately left out because they describe this Mac, not the person: the Option-N shortcut, hover- and click-to-open,
 /// the countdown and album art next to the notch, the fake notch, the battery readout and the update check.
 @MainActor
 final class SettingsSync: SyncSource {

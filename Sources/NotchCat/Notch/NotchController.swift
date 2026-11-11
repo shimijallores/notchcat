@@ -543,11 +543,16 @@ final class NotchController {
             MainActor.assumeIsolated { self?.mouseMoved() }
         }) { monitors.append(m) }
 
-        // Clicking anywhere in another app closes the panel.
-        if let m = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown], handler: { [weak self] _ in
+        // Clicking anywhere in another app closes the panel; clicking the notch opens it (when switched on).
+        if let m = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown], handler: { [weak self] event in
+            let isLeft = event.type == .leftMouseDown
             MainActor.assumeIsolated {
-                guard let self, self.ui.expanded else { return }
-                self.hide()
+                guard let self else { return }
+                if self.ui.expanded {
+                    self.hide()
+                } else if isLeft, self.settings.data.clickToOpen, self.geometry.clickRect.contains(NSEvent.mouseLocation) {
+                    self.show(pinned: true)
+                }
             }
         }) { monitors.append(m) }
 

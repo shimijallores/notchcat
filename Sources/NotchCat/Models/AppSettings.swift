@@ -82,6 +82,7 @@ struct SettingsData: Codable, Equatable {
 
     // Opening
     var hoverToOpen = true
+    var clickToOpen = false
     var hotkeyEnabled = true
 
     // Music
@@ -109,6 +110,7 @@ struct SettingsData: Codable, Equatable {
         snoozeMinutes = try c.decodeIfPresent(Int.self, forKey: .snoozeMinutes) ?? d.snoozeMinutes
         showRemindersInEvents = try c.decodeIfPresent(Bool.self, forKey: .showRemindersInEvents) ?? d.showRemindersInEvents
         hoverToOpen = try c.decodeIfPresent(Bool.self, forKey: .hoverToOpen) ?? d.hoverToOpen
+        clickToOpen = try c.decodeIfPresent(Bool.self, forKey: .clickToOpen) ?? d.clickToOpen
         hotkeyEnabled = try c.decodeIfPresent(Bool.self, forKey: .hotkeyEnabled) ?? d.hotkeyEnabled
         paperGrain = try c.decodeIfPresent(Bool.self, forKey: .paperGrain) ?? d.paperGrain
         showMusicChip = try c.decodeIfPresent(Bool.self, forKey: .showMusicChip) ?? d.showMusicChip

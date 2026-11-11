@@ -32,6 +32,24 @@ class FloatingPanel: NSPanel {
     override func cancelOperation(_ sender: Any?) {
         onCancel?()
     }
+
+    // The app has no menu bar, so ⌘C / ⌘V / ⌘X / ⌘A / ⌘Z never reach the text fields. Send them down the responder chain.
+    private static let editActions: [String: Selector] = [
+        "x": #selector(NSText.cut(_:)), "c": #selector(NSText.copy(_:)), "v": #selector(NSText.paste(_:)),
+        "a": #selector(NSText.selectAll(_:)), "z": Selector(("undo:")),
+    ]
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if flags.contains(.command), !flags.contains(.option), !flags.contains(.control),
+           var key = event.charactersIgnoringModifiers?.lowercased() {
+            let shift = flags.contains(.shift)
+            if key == "z", shift { key = "Z" }   // ⇧⌘Z is redo
+            let action = key == "Z" ? Selector(("redo:")) : (shift ? nil : Self.editActions[key])
+            if let action, NSApp.sendAction(action, to: nil, from: self) { return true }
+        }
+        return super.performKeyEquivalent(with: event)
+    }
 }
 
 /// The timer pill beside the notch. Never takes focus.
